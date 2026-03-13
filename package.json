@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "fetch-oxford-words": "tsx scrapper/index.ts"
   },
   "dependencies": {
     "@emotion/css": "^11.11.2",
@@ -15,7 +16,7 @@
     "axios": "^1.6.7",
     "dexie": "^3.2.5",
     "dexie-react-hooks": "^1.1.7",
-    "lodash": "^4.17.21",
+    "lodash": "^4.17.23",
     "next": "14.1.1",
     "next-themes": "^0.3.0",
     "node-html-parser": "^6.1.12",
@@ -26,7 +27,7 @@
     "sleep-promise": "^9.1.0"
   },
   "devDependencies": {
-    "@types/lodash": "^4.14.202",
+    "@types/lodash": "^4.17.24",
     "@types/node": "^20",
     "@types/react": "^18.2.42",
     "@types/react-dom": "^18",
@@ -35,6 +36,7 @@
     "eslint-config-next": "14.1.1",
     "postcss": "^8",
     "tailwindcss": "^3.3.0",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }
