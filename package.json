@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "BASE_PATH=/oxford-words next build",
     "start": "next start",
     "lint": "next lint",
     "fetch-oxford-words": "tsx scrapper/index.ts"
@@ -12,7 +12,6 @@
   "dependencies": {
     "@emotion/css": "^11.11.2",
     "@heroicons/react": "^2.1.1",
-    "@material-tailwind/react": "^2.1.9",
     "axios": "^1.6.7",
     "csv-parse": "^6.1.0",
     "dexie": "^3.2.5",

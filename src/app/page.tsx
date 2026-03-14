@@ -1,13 +1,5 @@
 "use client";
 
-import {
-  Card,
-  Typography,
-  Select,
-  Option,
-  Button,
-  CardBody,
-} from "@material-tailwind/react";
 import { useEffect, useState } from "react";
 import { uniq } from "lodash";
 import { db } from "./db";
@@ -17,6 +9,10 @@ import { cx } from "@emotion/css";
 import SwitchMode from "./components/switch-mode";
 import { useWordFilter, FILTER_OPTIONS, LIST_OPTIONS } from "./useWordFilter";
 import { useVocabRound } from "./useVocabRound";
+import { Card, CardBody } from "./components/ui/Card";
+import { Button } from "./components/ui/Button";
+import { Select } from "./components/ui/Select";
+import { Typography } from "./components/ui/Typography";
 
 export default function Home() {
   const { theme } = useTheme();
@@ -65,48 +61,29 @@ export default function Home() {
           <Select
             value={filter}
             onChange={(val) => setFilter(val as typeof filter)}
-            size="lg"
-            className="text-gray-900 dark:text-white/50 border-0 bg-white hover:bg-gray-50 shadow-sm dark:bg-gray-900 dark:hover:bg-gray-800"
-            labelProps={{ style: { display: "none" } }}
-          >
-            {FILTER_OPTIONS.map((v) => (
-              <Option key={v} value={v}>
-                {v}
-              </Option>
-            ))}
-          </Select>
+            options={FILTER_OPTIONS}
+          />
         </div>
 
         <div className="w-72">
           <Select
             value={list}
             onChange={(val) => setList(val as typeof list)}
-            size="lg"
-            className="text-gray-900 dark:text-white/50 border-0 bg-white hover:bg-gray-50 shadow-sm dark:bg-gray-900 dark:hover:bg-gray-800"
-            labelProps={{ style: { display: "none" } }}
-          >
-            {LIST_OPTIONS.map((v) => (
-              <Option key={v} value={v}>
-                {v}
-              </Option>
-            ))}
-          </Select>
+            options={LIST_OPTIONS}
+          />
         </div>
 
-        <Button
-          onClick={handleReset}
-          className="text-white w-20 bg-red-500 border border-red-600 shadow-md hover:bg-red-600 grow"
-        >
+        <Button onClick={handleReset} className="grow">
           Reset
         </Button>
       </div>
 
-      <Typography className="text-black dark:text-white/50 mb-6 pt-2 text-xl font-medium">
+      <Typography className="mb-6 pt-2 text-xl font-medium">
         Total Words: {words?.length}
       </Typography>
 
       {/* English word cards */}
-      <Typography className="text-black dark:text-white/50 mb-3 text-lg font-medium">
+      <Typography className="mb-3 text-lg font-medium">
         Click a word to hear it, then match to the correct Thai group:
       </Typography>
       <div className="grid grid-cols-2 gap-4 mb-6">
@@ -120,21 +97,20 @@ export default function Home() {
               key={idx}
               onClick={() => selectWord(idx)}
               className={cx(
-                "cursor-pointer text-gray-900 dark:text-white/50 shadow-md hover:shadow-lg transition-all border-2",
-                "bg-white dark:bg-gray-900",
+                "cursor-pointer hover:shadow-lg transition-all border-2",
                 isMatched &&
                   "border-green-500 bg-green-50 dark:bg-green-900 opacity-60",
                 isSelected &&
                   !isMatched &&
                   "border-blue-500 ring-2 ring-blue-300",
-                !isSelected && !isMatched && "border-transparent",
+                !isSelected && !isMatched && "border-transparent"
               )}
             >
               <CardBody className="text-center">
-                <Typography variant="h3" className="font-medium mb-1">
+                <h3 className="text-xl font-medium mb-1">
                   {word?.word ?? "-"}
-                </Typography>
-                <Typography className="text-sm mb-2">{word?.level}</Typography>
+                </h3>
+                <p className="text-sm mb-2">{word?.level}</p>
                 <div className="flex gap-1 justify-center flex-wrap">
                   {types.map((t) => (
                     <span
@@ -152,7 +128,7 @@ export default function Home() {
       </div>
 
       {/* Thai group cards */}
-      <Typography className="text-black dark:text-white/50 mb-4 text-lg font-medium">
+      <Typography className="mb-4 text-lg font-medium">
         Thai meaning groups:
       </Typography>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-5">
@@ -166,8 +142,7 @@ export default function Home() {
               key={groupIdx}
               onClick={() => !isDisabled && selectGroup(groupIdx)}
               className={cx(
-                "transition-all shadow-md border-2",
-                "text-gray-900 dark:text-white/50 bg-white dark:bg-gray-900",
+                "transition-all border-2",
                 isDisabled
                   ? "opacity-50 cursor-not-allowed"
                   : "cursor-pointer hover:shadow-lg",
@@ -176,7 +151,7 @@ export default function Home() {
                 flash === "wrong" &&
                   "border-red-500 bg-red-100 dark:bg-red-900",
                 !flash && !isLocked && "border-transparent",
-                isLocked && "opacity-60",
+                isLocked && "opacity-60"
               )}
             >
               <CardBody>
@@ -185,9 +160,9 @@ export default function Home() {
                 </span>
                 <div className="space-y-1">
                   {group.entries.map((entry, i) => (
-                    <Typography key={i} className="text-sm">
+                    <p key={i} className="text-sm">
                       {entry.text}
-                    </Typography>
+                    </p>
                   ))}
                 </div>
               </CardBody>
