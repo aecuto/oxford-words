@@ -7,7 +7,7 @@ function SwitchMode({}: Props) {
   const { theme, setTheme } = useTheme();
 
   return (
-    <div className="absolute top-5 right-5 flex items-center gap-2">
+    <div className="flex items-center gap-2">
       <svg
         xmlns="http://www.w3.org/2000/svg"
         fill="none"
