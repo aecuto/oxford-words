@@ -7,137 +7,94 @@ import {
   Option,
   Button,
   CardBody,
-  Popover,
-  PopoverHandler,
-  PopoverContent,
 } from "@material-tailwind/react";
 import { useEffect, useState } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
-import { Word, db } from "./db";
-import wordsJson from "../../scrapper/words.json";
-import { sample, uniqBy } from "lodash";
-import Iframe from "react-iframe";
-import { useHotkeys } from "react-hotkeys-hook";
+import { uniq } from "lodash";
+import { db } from "./db";
+import wordsJson from "../../translator/words.th.json";
 import { useTheme } from "next-themes";
 import { cx } from "@emotion/css";
 import SwitchMode from "./components/switch-mode";
-
-const FILTER = ["verb", "adjective", "noun", "adverb", "other"];
-const LIST = ["Oxford 3000", "Oxford 5000 excluding Oxford 3000"];
+import { useWordFilter, FILTER_OPTIONS, LIST_OPTIONS } from "./useWordFilter";
+import { useVocabRound } from "./useVocabRound";
 
 export default function Home() {
-  const [filter, setFilter] = useState("verb");
-  const [list, setList] = useState("Oxford 3000");
-  const [word, setWord] = useState<Word>();
-  const [openPopover, setOpenPopover] = useState(false);
   const { theme } = useTheme();
   const [isClient, setIsClient] = useState(false);
 
+  const { filter, setFilter, list, setList, words } = useWordFilter();
+  const {
+    words: currentWords,
+    groups,
+    selectedWordIdx,
+    matchedWords,
+    groupFlash,
+    lockedGroups,
+    setup,
+    selectWord,
+    selectGroup,
+  } = useVocabRound();
+
+  useEffect(() => setIsClient(true), []);
   useEffect(() => {
-    setIsClient(true);
-  }, []);
+    if (words && words.length >= 2) setup(words);
+  }, [words, setup]);
 
-  const triggers = {
-    onMouseEnter: () => setOpenPopover(true),
-    onMouseLeave: () => setOpenPopover(false),
-  };
-
-  const words = useLiveQuery(async () => {
-    const ox3000 = list === LIST[0];
-
-    const data = await db.words
-      .filter((word) => {
-        let isFilter = false;
-        if (filter === "other") {
-          isFilter = !["verb", "adjective", "noun", "adverb"]?.includes(
-            word.type,
-          );
-        } else {
-          isFilter = word.type === filter;
-        }
-
-        return word.ox3000 === ox3000 && !word.ok && isFilter;
-      })
-      .toArray();
-
-    setWord(sample(data));
-
-    return data;
-  }, [filter, list]);
-
-  const test = uniqBy(words, "type");
-  console.log(test);
-  // console.log(["verb", "adjective", "noun", "adverb", ...test]);
-
-  const onClear = () => {
+  const handleReset = () => {
     db.words.clear();
     db.words.bulkAdd(wordsJson);
   };
 
-  const onOkay = () => {
-    if (!word) return;
-    db.words.update(Number(word.id), { ok: true });
-  };
-
-  const onSkip = () => {
-    setWord(sample(words));
-  };
-
-  const playAudio = () => {
-    if (!word) return;
-    new Audio(word.pronounce).play();
-  };
-
-  useHotkeys("a", () => onOkay());
-  useHotkeys("d", () => onSkip());
-  useHotkeys("space", () => playAudio());
-
   if (!isClient) {
     return (
       <div className="flex w-full h-screen items-center justify-center">
-        <div className="loader"></div>
+        <div className="loader" />
       </div>
     );
   }
 
   return (
     <div
-      className={cx(`p-2 m-auto max-w-screen-md`, theme === "dark" && "dark")}
+      className={cx("p-2 m-auto max-w-screen-md", theme === "dark" && "dark")}
     >
       <SwitchMode />
+
+      {/* Controls */}
       <div className="flex flex-wrap mb-5 gap-3 mt-12 lg:mt-5">
         <div className="w-72">
           <Select
             value={filter}
-            onChange={(val) => setFilter(String(val))}
+            onChange={(val) => setFilter(val as typeof filter)}
             size="lg"
             className="text-gray-900 dark:text-white/50 border-0 bg-white hover:bg-gray-50 shadow-sm dark:bg-gray-900 dark:hover:bg-gray-800"
             labelProps={{ style: { display: "none" } }}
           >
-            {FILTER.map((value) => (
-              <Option key={value} value={value}>
-                {value}
+            {FILTER_OPTIONS.map((v) => (
+              <Option key={v} value={v}>
+                {v}
               </Option>
             ))}
           </Select>
         </div>
+
         <div className="w-72">
           <Select
             value={list}
-            onChange={(val) => setList(String(val))}
+            onChange={(val) => setList(val as typeof list)}
             size="lg"
             className="text-gray-900 dark:text-white/50 border-0 bg-white hover:bg-gray-50 shadow-sm dark:bg-gray-900 dark:hover:bg-gray-800"
             labelProps={{ style: { display: "none" } }}
           >
-            {LIST.map((value) => (
-              <Option key={value} value={value}>
-                {value}
+            {LIST_OPTIONS.map((v) => (
+              <Option key={v} value={v}>
+                {v}
               </Option>
             ))}
           </Select>
         </div>
+
         <Button
-          onClick={() => onClear()}
+          onClick={handleReset}
           className="text-white w-20 bg-red-500 border border-red-600 shadow-md hover:bg-red-600 grow"
         >
           Reset
@@ -148,61 +105,95 @@ export default function Home() {
         Total Words: {words?.length}
       </Typography>
 
-      <Button
-        onClick={() => onOkay()}
-        color="blue"
-        className="mr-5 text-white bg-blue-500 border border-blue-600 hover:bg-blue-600"
-      >
-        OK
-      </Button>
-      <Button
-        onClick={() => onSkip()}
-        color="deep-orange"
-        className="mr-5 text-white bg-orange-700 hover:bg-orange-800 border-orange-800"
-      >
-        Skip
-      </Button>
+      {/* English word cards */}
+      <Typography className="text-black dark:text-white/50 mb-3 text-lg font-medium">
+        Click a word to hear it, then match to the correct Thai group:
+      </Typography>
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        {currentWords.map((word, idx) => {
+          const isSelected = selectedWordIdx === idx;
+          const isMatched = matchedWords[idx];
+          const types = uniq(word?.entries?.map((e) => e.type) ?? []);
 
-      <Button onClick={() => playAudio()}>Play</Button>
-
-      <Card className="mt-6 text-gray-900 bg-white border dark:text-white/50 dark:border-none dark:bg-gray-900 mb-5 shadow-md ">
-        <CardBody>
-          <Popover open={openPopover} handler={setOpenPopover}>
-            <PopoverHandler {...triggers}>
-              <Typography
-                variant="h2"
-                className="mb-2 cursor-help max-w-fit hover:text-gray-800 dark:hover:text-white"
-              >
-                {word?.word || "-"}
-              </Typography>
-            </PopoverHandler>
-            <PopoverContent
-              {...triggers}
-              className="z-50 w-full  max-w-screen-md bg-white/90"
+          return (
+            <Card
+              key={idx}
+              onClick={() => selectWord(idx)}
+              className={cx(
+                "cursor-pointer text-gray-900 dark:text-white/50 shadow-md hover:shadow-lg transition-all border-2",
+                "bg-white dark:bg-gray-900",
+                isMatched &&
+                  "border-green-500 bg-green-50 dark:bg-green-900 opacity-60",
+                isSelected &&
+                  !isMatched &&
+                  "border-blue-500 ring-2 ring-blue-300",
+                !isSelected && !isMatched && "border-transparent",
+              )}
             >
-              <Iframe
-                url={`https://dict.longdo.com/mobile.php?search=${word?.word}`}
-                className="w-full aspect-video"
-              />
-            </PopoverContent>
-          </Popover>
+              <CardBody className="text-center">
+                <Typography variant="h3" className="font-medium mb-1">
+                  {word?.word ?? "-"}
+                </Typography>
+                <Typography className="text-sm mb-2">{word?.level}</Typography>
+                <div className="flex gap-1 justify-center flex-wrap">
+                  {types.map((t) => (
+                    <span
+                      key={t}
+                      className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 font-medium"
+                    >
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              </CardBody>
+            </Card>
+          );
+        })}
+      </div>
 
-          <Typography>level: {word?.level}</Typography>
-          <Typography>type: {word?.type}</Typography>
-        </CardBody>
-      </Card>
+      {/* Thai group cards */}
+      <Typography className="text-black dark:text-white/50 mb-4 text-lg font-medium">
+        Thai meaning groups:
+      </Typography>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-5">
+        {groups.map((group, groupIdx) => {
+          const flash = groupFlash[groupIdx];
+          const isLocked = lockedGroups.includes(groupIdx);
+          const isDisabled = selectedWordIdx === null || isLocked;
 
-      <div className="text-black dark:text-white/50">
-        <Typography className="text-lg mb-2 font-medium">Shortcuts</Typography>
-        <Typography>
-          press <span className="font-bold text-xl">(A)</span> : OK
-        </Typography>
-        <Typography>
-          press <span className="font-bold text-xl">(D)</span> : Skip
-        </Typography>
-        <Typography>
-          press <span className="font-bold text-xl">(Space)</span> : Pronounce
-        </Typography>
+          return (
+            <Card
+              key={groupIdx}
+              onClick={() => !isDisabled && selectGroup(groupIdx)}
+              className={cx(
+                "transition-all shadow-md border-2",
+                "text-gray-900 dark:text-white/50 bg-white dark:bg-gray-900",
+                isDisabled
+                  ? "opacity-50 cursor-not-allowed"
+                  : "cursor-pointer hover:shadow-lg",
+                (flash === "correct" || isLocked) &&
+                  "border-green-500 bg-green-100 dark:bg-green-900",
+                flash === "wrong" &&
+                  "border-red-500 bg-red-100 dark:bg-red-900",
+                !flash && !isLocked && "border-transparent",
+                isLocked && "opacity-60",
+              )}
+            >
+              <CardBody>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 font-medium mb-2 inline-block">
+                  {group.type}
+                </span>
+                <div className="space-y-1">
+                  {group.entries.map((entry, i) => (
+                    <Typography key={i} className="text-sm">
+                      {entry.text}
+                    </Typography>
+                  ))}
+                </div>
+              </CardBody>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );

@@ -1,6 +1,11 @@
 // db.ts
 import Dexie, { Table } from "dexie";
-import wordsJson from "../../scrapper/words.json";
+import wordsJson from "../../translator/words.th.json";
+
+export interface TEntry {
+  type: string;
+  thai: string[];
+}
 
 export interface Word {
   id?: number;
@@ -11,6 +16,7 @@ export interface Word {
   ox5000: boolean;
   ok?: boolean;
   pronounce: string;
+  entries: TEntry[];
 }
 
 export class MySubClassedDexie extends Dexie {
@@ -18,9 +24,16 @@ export class MySubClassedDexie extends Dexie {
 
   constructor() {
     super("oxDatabase");
-    this.version(1).stores({
-      words: "++id, word, type, level, ox3000, ox5000, ok, pronounce", // Primary key and indexed props
-    });
+    this.version(4)
+      .stores({
+        words:
+          "++id, word, type, level, ox3000, ox5000, ok, pronounce, entries", // Primary key and indexed props
+      })
+      .upgrade(async (tx) => {
+        // Clear old data and add new data with entries
+        await tx.table("words").clear();
+        await tx.table("words").bulkAdd(wordsJson);
+      });
   }
 }
 

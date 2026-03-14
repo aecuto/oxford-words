@@ -24,8 +24,8 @@ interface OxWord {
 }
 
 interface WordEntry {
-  "e-cat": string;
-  "t-entry": string[];
+  type: string;
+  thai: string[];
 }
 
 interface ResultWord extends OxWord {
@@ -59,8 +59,8 @@ function buildEntries(rows: CsvRow[]): WordEntry[] {
   }
 
   return Array.from(catMap.entries()).map(([eCat, tEntries]) => ({
-    "e-cat": eCat,
-    "t-entry": Array.from(tEntries),
+    type: eCat,
+    thai: Array.from(tEntries),
   }));
 }
 
