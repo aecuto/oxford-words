@@ -15,7 +15,7 @@ import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Word, db } from "./db";
 import wordsJson from "../../scrapper/words.json";
-import { sample } from "lodash";
+import { sample, uniqBy } from "lodash";
 import Iframe from "react-iframe";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useTheme } from "next-themes";
@@ -50,7 +50,7 @@ export default function Home() {
         let isFilter = false;
         if (filter === "other") {
           isFilter = !["verb", "adjective", "noun", "adverb"]?.includes(
-            word.type
+            word.type,
           );
         } else {
           isFilter = word.type === filter;
@@ -64,6 +64,10 @@ export default function Home() {
 
     return data;
   }, [filter, list]);
+
+  const test = uniqBy(words, "type");
+  console.log(test);
+  // console.log(["verb", "adjective", "noun", "adverb", ...test]);
 
   const onClear = () => {
     db.words.clear();
