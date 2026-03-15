@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { db } from "./db";
+import { db, resetDatabase } from "./db";
 import wordsJson from "../../translator/words.th.json";
 import { useTheme } from "next-themes";
 import { cx } from "@emotion/css";
@@ -16,6 +16,8 @@ import { Typography } from "./components/ui/Typography";
 export default function Home() {
   const { theme } = useTheme();
   const [isClient, setIsClient] = useState(false);
+
+  const [revealed, setRevealed] = useState(false);
 
   const { filter, setFilter, list, setList, words, total } = useWordFilter();
   const {
@@ -32,11 +34,7 @@ export default function Home() {
   useEffect(() => {
     if (words && words.length >= 10) setup(words);
   }, [words, setup]);
-
-  const handleReset = () => {
-    db.words.clear();
-    db.words.bulkAdd(wordsJson);
-  };
+  useEffect(() => setRevealed(false), [currentWord]);
 
   if (!isClient) {
     return (
@@ -45,6 +43,12 @@ export default function Home() {
       </div>
     );
   }
+
+  const showAnswer = () => {
+    if (currentWord?.pronounce)
+      new Audio(currentWord.pronounce).play().catch(() => {});
+    setRevealed(true);
+  };
 
   return (
     <div
@@ -81,14 +85,8 @@ export default function Home() {
       </div>
 
       {/* Current word card */}
-      <div className="grid grid-cols-1 gap-4 mb-6">
-        <Card
-          onClick={() =>
-            currentWord?.pronounce &&
-            new Audio(currentWord.pronounce).play().catch(() => {})
-          }
-          className="cursor-pointer hover:shadow-lg transition-all border-2 border-transparent"
-        >
+      <div onClick={() => showAnswer()} className="grid grid-cols-1 gap-4 mb-6">
+        <Card className="cursor-pointer hover:shadow-lg transition-all border-2 border-transparent">
           <CardBody className="text-center">
             <h3 className="text-xl font-medium mb-1">
               {currentWord?.word ?? "-"}
@@ -105,39 +103,49 @@ export default function Home() {
       <Typography className="mb-4 text-lg font-medium">
         Thai meaning groups:
       </Typography>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-5">
-        {answers.map((answer, idx) => {
-          const isSelected = selectedAnswer === answer;
-          const isCorrect = isSelected && answerState === "correct";
-          const isWrong = isSelected && answerState === "wrong";
+      {!revealed ? (
+        <div
+          className="flex items-center justify-center h-40 text-gray-400 text-sm cursor-pointer"
+          onClick={() => showAnswer()}
+        >
+          Tap this or the word to reveal answers
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-5">
+          {answers.map((answer, idx) => {
+            const isSelected = selectedAnswer === answer;
+            const isCorrect = isSelected && answerState === "correct";
+            const isWrong = isSelected && answerState === "wrong";
 
-          return (
-            <Card
-              key={idx}
-              onClick={() => selectAnswer(answer)}
-              className={cx(
-                "transition-all border-2",
-                answerState !== "idle"
-                  ? "opacity-50 cursor-not-allowed"
-                  : "cursor-pointer hover:shadow-lg",
-                isCorrect && "border-green-500 bg-green-100 dark:bg-green-900",
-                isWrong && "border-red-500 bg-red-100 dark:bg-red-900",
-                !isCorrect && !isWrong && "border-transparent",
-              )}
-            >
-              <CardBody>
-                <ul className="space-y-1 list-disc list-inside">
-                  {answer.split(", ").map((text, i) => (
-                    <li key={i} className="text-sm">
-                      {text}
-                    </li>
-                  ))}
-                </ul>
-              </CardBody>
-            </Card>
-          );
-        })}
-      </div>
+            return (
+              <Card
+                key={idx}
+                onClick={() => selectAnswer(answer)}
+                className={cx(
+                  "transition-all border-2",
+                  answerState !== "idle"
+                    ? "opacity-50 cursor-not-allowed"
+                    : "cursor-pointer hover:shadow-lg",
+                  isCorrect &&
+                    "border-green-500 bg-green-100 dark:bg-green-900",
+                  isWrong && "border-red-500 bg-red-100 dark:bg-red-900",
+                  !isCorrect && !isWrong && "border-transparent",
+                )}
+              >
+                <CardBody>
+                  <ul className="space-y-1 list-disc list-inside">
+                    {answer.split(", ").map((text, i) => (
+                      <li key={i} className="text-sm">
+                        {text}
+                      </li>
+                    ))}
+                  </ul>
+                </CardBody>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       {/* Controls */}
       <div className="space-y-3 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
@@ -159,7 +167,7 @@ export default function Home() {
         </div>
         <div className="flex items-center justify-between">
           <SwitchMode />
-          <Button onClick={handleReset} className="lg:text-lg lg:py-3">
+          <Button onClick={resetDatabase} className="lg:text-lg lg:py-3">
             Reset
           </Button>
         </div>

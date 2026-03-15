@@ -1,23 +1,15 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { sampleSize, shuffle, flatMap, uniq } from "lodash";
-import { Word, db } from "./db";
+import { Word, RoundRow, db, CurrentRound } from "./db";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type AnswerState = "idle" | "correct" | "wrong";
 
-type WordRound = {
-  word: Word;
-  correct: boolean | null;
-  answers: string[];
-};
-
 type RoundState = {
-  pool: Word[];
-  queue: WordRound[];
-  currentIdx: number;
+  current: CurrentRound | null; // was RoundRow
   correctCount: number;
-  answers: string[];
+  total: number;
   selectedAnswer: string | null;
   answerState: AnswerState;
 };
@@ -27,29 +19,43 @@ type RoundState = {
 const ROUND_SIZE = 10;
 const ANSWER_COUNT = 6;
 const FLASH_MS = 800;
+const IS_DEV = process.env.NODE_ENV === "development";
 
-const INITIAL_STATE: RoundState = {
-  pool: [],
-  queue: [],
-  currentIdx: 0,
-  correctCount: 0,
-  answers: [],
-  selectedAnswer: null,
-  answerState: "idle",
-};
+// ─── DB helpers ───────────────────────────────────────────────────────────────
 
-// ─── Audio ────────────────────────────────────────────────────────────────────
-
-let currentAudio: HTMLAudioElement | null = null;
-
-function playSound(word: Word) {
-  if (!word?.pronounce) return;
-  currentAudio?.pause();
-  currentAudio = new Audio(word.pronounce);
-  currentAudio.play().catch(() => {});
+async function joinWord(row: RoundRow): Promise<CurrentRound | null> {
+  const word = await db.words.get(row.wordId);
+  if (!word) return null;
+  return { ...row, word };
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+async function getNextPending(): Promise<CurrentRound | null> {
+  const row = await db.rounds
+    .orderBy("order")
+    .filter((r) => r.correct === null)
+    .first();
+  if (!row) return null;
+  return joinWord(row);
+}
+
+async function getCorrectCount(): Promise<number> {
+  return db.rounds.filter((r) => r.correct === true).count();
+}
+
+async function getTotalOriginal(): Promise<number> {
+  return db.rounds.count();
+}
+
+async function clearRounds(): Promise<void> {
+  await db.rounds.clear();
+}
+
+async function hasActiveRound(): Promise<boolean> {
+  const pending = await db.rounds.filter((r) => r.correct === null).count();
+  return pending > 0;
+}
+
+// ─── Answer helpers ───────────────────────────────────────────────────────────
 
 const typeMap: Record<string, string> = {
   noun: "N",
@@ -70,121 +76,146 @@ function getCorrectAnswer(word: Word): string {
   return result || entries.flatMap((e) => e.thai ?? []).at(0) || "";
 }
 
-const IS_DEV = process.env.NODE_ENV === "development";
-
 function buildAnswers(current: Word, pool: Word[]): string[] {
   const correct = getCorrectAnswer(current);
-  const wrong = pool
+  const distractors = pool
     .filter((w) => w.id !== current.id)
     .map(getCorrectAnswer)
     .filter((a) => a && a !== correct);
   const correctAnswer = IS_DEV ? correct + "___" : correct;
-  return shuffle([correctAnswer, ...sampleSize(wrong, ANSWER_COUNT - 1)]);
-}
-
-function buildQueue(words: Word[], pool: Word[]): WordRound[] {
-  return words.map((word) => ({
-    word,
-    correct: null,
-    answers: buildAnswers(word, pool),
-  }));
-}
-
-// ─── advance helper ───────────────────────────────────────────────────────────
-
-function advance(queue: WordRound[], pool: Word[], nextIdx: number) {
-  const allDone = nextIdx >= queue.length;
-
-  if (allDone) {
-    queue.forEach((r) => db.words.update(Number(r.word.id), { ok: true }));
-    return (p: RoundState): RoundState => ({
-      ...p,
-      currentIdx: nextIdx,
-      answerState: "idle",
-    });
-  }
-
-  const next = queue[nextIdx];
-  playSound(next.word);
-  return (p: RoundState): RoundState => ({
-    ...p,
-    currentIdx: nextIdx,
-    selectedAnswer: null,
-    answerState: "idle",
-    answers: next.answers,
-  });
+  return shuffle([correctAnswer, ...sampleSize(distractors, ANSWER_COUNT - 1)]);
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
+const INITIAL_STATE: RoundState = {
+  current: null,
+  correctCount: 0,
+  total: ROUND_SIZE,
+  selectedAnswer: null,
+  answerState: "idle",
+};
+
 export function useVocabRound() {
   const [state, setState] = useState<RoundState>(INITIAL_STATE);
+  const [pool, setPool] = useState<Word[]>([]);
+  const [hydrated, setHydrated] = useState(false);
 
-  const setup = useCallback((pool: Word[]) => {
-    if (pool.length < ROUND_SIZE) return;
-    const words = sampleSize(pool, ROUND_SIZE);
-    const queue = buildQueue(words, pool);
-    setState({
-      ...INITIAL_STATE,
-      pool,
-      queue,
-      answers: queue[0].answers,
-    });
-    playSound(queue[0].word);
+  // ── Rehydrate on mount ──────────────────────────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      const active = await hasActiveRound();
+      if (active) {
+        const [current, correctCount, total] = await Promise.all([
+          getNextPending(),
+          getCorrectCount(),
+          getTotalOriginal(),
+        ]);
+        setState({ ...INITIAL_STATE, current, correctCount, total });
+      }
+      setHydrated(true);
+    })();
   }, []);
 
-  const currentWord = state.queue[state.currentIdx]?.word;
+  // ── Setup ───────────────────────────────────────────────────────────────────
+  const setup = useCallback(async (words: Word[]) => {
+    if (words.length < ROUND_SIZE) return;
+    setPool(words);
 
+    if (await hasActiveRound()) {
+      const [current, correctCount, total] = await Promise.all([
+        getNextPending(),
+        getCorrectCount(),
+        getTotalOriginal(),
+      ]);
+      setState({ ...INITIAL_STATE, current, correctCount, total });
+      setHydrated(true);
+      return;
+    }
+
+    const selected = sampleSize(words, ROUND_SIZE);
+    await clearRounds();
+    await db.rounds.bulkAdd(
+      selected.map((word, i) => ({
+        wordId: Number(word.id), // no word object — just the id
+        correct: null,
+        answers: buildAnswers(word, words),
+        order: i,
+      })),
+    );
+
+    const current = await getNextPending();
+    setState({ ...INITIAL_STATE, current, total: ROUND_SIZE });
+    setHydrated(true);
+  }, []);
+
+  // ── Reset ───────────────────────────────────────────────────────────────────
+  const resetRound = useCallback(async () => {
+    await clearRounds();
+    setState(INITIAL_STATE);
+  }, []);
+
+  // ── Select answer ───────────────────────────────────────────────────────────
   const selectAnswer = useCallback(
-    (answer: string) => {
-      if (!currentWord || state.answerState !== "idle") return;
+    async (answer: string) => {
+      const { current, answerState } = state;
+      if (!current || answerState !== "idle") return;
 
       const normalize = (a: string) => a.replace(/___$/, "");
       const isCorrect =
-        normalize(answer) === normalize(getCorrectAnswer(currentWord));
+        normalize(answer) === normalize(getCorrectAnswer(current.word));
 
-      setState((s) => {
-        const updatedQueue = s.queue.map((r, i) =>
-          i === s.currentIdx ? { ...r, correct: isCorrect } : r,
-        );
+      await db.rounds.update(current.id!, {
+        correct: isCorrect ? true : null,
+        ...(isCorrect
+          ? {}
+          : {
+              order: Date.now(),
+              answers: buildAnswers(current.word, pool),
+            }),
+      });
 
-        // Re-insert wrong word right after current position
-        if (!isCorrect) {
-          const wrongRound: WordRound = {
-            ...updatedQueue[s.currentIdx],
-            correct: null,
-            answers: buildAnswers(updatedQueue[s.currentIdx].word, s.pool),
-          };
-          updatedQueue.splice(s.currentIdx + 1, 0, wrongRound);
+      setState((s) => ({
+        ...s,
+        selectedAnswer: answer,
+        answerState: isCorrect ? "correct" : "wrong",
+        correctCount: isCorrect ? s.correctCount + 1 : s.correctCount,
+      }));
+
+      setTimeout(async () => {
+        const next = await getNextPending();
+
+        if (!next) {
+          const all = await db.rounds.toArray();
+          await Promise.all(
+            all.map((r) => db.words.update(r.wordId, { ok: true })),
+          );
+          await clearRounds();
+          setState(INITIAL_STATE);
+          return;
         }
 
-        const nextIdx = s.currentIdx + 1;
-
-        // Use functional update so advance reads the latest queue (with splice)
-        setTimeout(
-          () => setState((p) => advance(p.queue, p.pool, nextIdx)(p)),
-          FLASH_MS,
-        );
-
-        return {
+        setState((s) => ({
           ...s,
-          selectedAnswer: answer,
-          answerState: (isCorrect ? "correct" : "wrong") as AnswerState,
-          correctCount: isCorrect ? s.correctCount + 1 : s.correctCount,
-          queue: updatedQueue,
-        };
-      });
+          current: next,
+          selectedAnswer: null,
+          answerState: "idle",
+        }));
+      }, FLASH_MS);
     },
-    [currentWord, state.answerState],
+    [state, pool],
   );
 
   return {
-    currentWord,
-    answers: state.answers,
+    currentWord: state.current?.word ?? null,
+    answers: state.current?.answers ?? [],
     selectedAnswer: state.selectedAnswer,
     answerState: state.answerState,
-    progress: { current: state.correctCount, total: ROUND_SIZE },
+    progress: { current: state.correctCount, total: state.total },
+    hydrated,
+    hasSavedRound: state.current !== null,
     setup,
+    resetRound,
     selectAnswer,
   };
 }
