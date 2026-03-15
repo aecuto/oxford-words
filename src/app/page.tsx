@@ -6,7 +6,7 @@ import wordsJson from "../../translator/words.th.json";
 import { useTheme } from "next-themes";
 import { cx } from "@emotion/css";
 import SwitchMode from "./components/switch-mode";
-import { useWordFilter, FILTER_OPTIONS, LIST_OPTIONS } from "./useWordFilter";
+import { useWordFilter, LIST_OPTIONS } from "./useWordFilter";
 import { useVocabRound } from "./useVocabRound";
 import { Card, CardBody } from "./components/ui/Card";
 import { Button } from "./components/ui/Button";
@@ -19,15 +19,17 @@ export default function Home() {
 
   const [revealed, setRevealed] = useState(false);
 
-  const { filter, setFilter, list, setList, words, total } = useWordFilter();
+  const { filter, list, setList, words, total } = useWordFilter();
   const {
     currentWord,
     answers,
+    correctAnswer,
     selectedAnswer,
     answerState,
     progress,
     setup,
     selectAnswer,
+    nextWord,
   } = useVocabRound();
 
   useEffect(() => setIsClient(true), []);
@@ -63,10 +65,10 @@ export default function Home() {
             <span className="text-gray-400 font-normal"> / {total}</span>
           </span>
         </div>
-        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400">
+        <span className="text-sm font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400">
           {total
-            ? Math.round(((total - (words?.length ?? 0)) / total) * 100)
-            : 0}
+            ? (((total - (words?.length ?? 0)) / total) * 100).toFixed(2)
+            : "0.00"}
           %
         </span>
       </div>
@@ -111,52 +113,57 @@ export default function Home() {
           Tap this or the word to reveal answers
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-5">
-          {answers.map((answer, idx) => {
-            const isSelected = selectedAnswer === answer;
-            const isCorrect = isSelected && answerState === "correct";
-            const isWrong = isSelected && answerState === "wrong";
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-5">
+            {answers.map((answer, idx) => {
+              const isSelected = selectedAnswer === answer;
+              const isCorrect = isSelected && answerState === "correct";
+              const isWrong = isSelected && answerState === "wrong";
+              const isActuallyCorrect = correctAnswer && answer === correctAnswer;
 
-            return (
-              <Card
-                key={idx}
-                onClick={() => selectAnswer(answer)}
-                className={cx(
-                  "transition-all border-2",
-                  answerState !== "idle"
-                    ? "opacity-50 cursor-not-allowed"
-                    : "cursor-pointer hover:shadow-lg",
-                  isCorrect &&
-                    "border-green-500 bg-green-100 dark:bg-green-900",
-                  isWrong && "border-red-500 bg-red-100 dark:bg-red-900",
-                  !isCorrect && !isWrong && "border-transparent",
-                )}
-              >
-                <CardBody>
-                  <ul className="space-y-1 list-disc list-inside">
-                    {answer.split(", ").map((text, i) => (
-                      <li key={i} className="text-sm">
-                        {text}
-                      </li>
-                    ))}
-                  </ul>
-                </CardBody>
-              </Card>
-            );
-          })}
-        </div>
+              return (
+                <Card
+                  key={idx}
+                  onClick={() => selectAnswer(answer)}
+                  className={cx(
+                    "transition-all border-2",
+                    answerState !== "idle"
+                      ? "opacity-50 cursor-not-allowed"
+                      : "cursor-pointer hover:shadow-lg",
+                    isCorrect &&
+                      "border-green-500 bg-green-100 dark:bg-green-900",
+                    isWrong && "border-red-500 bg-red-100 dark:bg-red-900",
+                    // Show correct answer when wrong
+                    answerState === "wrong" && isActuallyCorrect &&
+                      "!opacity-100 border-green-500 bg-green-100 dark:bg-green-900",
+                    !isCorrect && !isWrong && !(answerState === "wrong" && isActuallyCorrect) && "border-transparent",
+                  )}
+                >
+                  <CardBody>
+                    <ul className="space-y-1 list-disc list-inside">
+                      {answer.split(", ").map((text, i) => (
+                        <li key={i} className="text-sm">
+                          {text}
+                        </li>
+                      ))}
+                    </ul>
+                  </CardBody>
+                </Card>
+              );
+            })}
+          </div>
+          {/* Skip button after wrong answer */}
+          {answerState === "wrong" && (
+            <div className="flex justify-center mt-4">
+              <Button onClick={nextWord}>Next →</Button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Controls */}
       <div className="space-y-3 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
         <div className="flex flex-wrap gap-3">
-          <div className="w-72">
-            <Select
-              value={filter}
-              onChange={(val) => setFilter(val as typeof filter)}
-              options={FILTER_OPTIONS}
-            />
-          </div>
           <div className="w-72">
             <Select
               value={list}

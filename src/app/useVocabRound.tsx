@@ -19,7 +19,6 @@ type RoundState = {
 const ROUND_SIZE = 10;
 const ANSWER_COUNT = 6;
 const FLASH_MS = 800;
-const IS_DEV = process.env.NODE_ENV === "development";
 
 // ─── DB helpers ───────────────────────────────────────────────────────────────
 
@@ -55,6 +54,19 @@ async function hasActiveRound(): Promise<boolean> {
   return pending > 0;
 }
 
+async function loadRoundState(): Promise<{
+  current: CurrentRound | null;
+  correctCount: number;
+  total: number;
+}> {
+  const [current, correctCount, total] = await Promise.all([
+    getNextPending(),
+    getCorrectCount(),
+    getTotalOriginal(),
+  ]);
+  return { current, correctCount, total };
+}
+
 // ─── Answer helpers ───────────────────────────────────────────────────────────
 
 const typeMap: Record<string, string> = {
@@ -67,13 +79,20 @@ const typeMap: Record<string, string> = {
 function getCorrectAnswer(word: Word): string {
   const entryType = typeMap[word.type];
   const entries = word.entries ?? [];
-  const filtered = entryType
+
+  const filteredEntries = entryType
     ? entries.filter((e) => e.type.startsWith(entryType))
     : entries;
-  const result = uniq(flatMap(filtered, (e) => e.thai ?? []))
-    .slice(0, 3)
-    .join(", ");
-  return result || entries.flatMap((e) => e.thai ?? []).at(0) || "";
+
+  const thaiTranslations = uniq(flatMap(filteredEntries, (e) => e.thai ?? []));
+
+  // Take up to 3 translations
+  if (thaiTranslations.length > 0) {
+    return thaiTranslations.slice(0, 3).join(", ");
+  }
+
+  // Fallback: first Thai translation from any entry
+  return entries.flatMap((e) => e.thai ?? [])[0] || "";
 }
 
 function buildAnswers(current: Word, pool: Word[]): string[] {
@@ -82,8 +101,7 @@ function buildAnswers(current: Word, pool: Word[]): string[] {
     .filter((w) => w.id !== current.id)
     .map(getCorrectAnswer)
     .filter((a) => a && a !== correct);
-  const correctAnswer = IS_DEV ? correct + "___" : correct;
-  return shuffle([correctAnswer, ...sampleSize(distractors, ANSWER_COUNT - 1)]);
+  return shuffle([correct, ...sampleSize(distractors, ANSWER_COUNT - 1)]);
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -106,12 +124,8 @@ export function useVocabRound() {
     (async () => {
       const active = await hasActiveRound();
       if (active) {
-        const [current, correctCount, total] = await Promise.all([
-          getNextPending(),
-          getCorrectCount(),
-          getTotalOriginal(),
-        ]);
-        setState({ ...INITIAL_STATE, current, correctCount, total });
+        const roundState = await loadRoundState();
+        setState({ ...INITIAL_STATE, ...roundState });
       }
       setHydrated(true);
     })();
@@ -123,12 +137,8 @@ export function useVocabRound() {
     setPool(words);
 
     if (await hasActiveRound()) {
-      const [current, correctCount, total] = await Promise.all([
-        getNextPending(),
-        getCorrectCount(),
-        getTotalOriginal(),
-      ]);
-      setState({ ...INITIAL_STATE, current, correctCount, total });
+      const roundState = await loadRoundState();
+      setState({ ...INITIAL_STATE, ...roundState });
       setHydrated(true);
       return;
     }
@@ -155,60 +165,71 @@ export function useVocabRound() {
     setState(INITIAL_STATE);
   }, []);
 
+  // ── Next word ───────────────────────────────────────────────────────────────
+  const nextWord = useCallback(async () => {
+    const next = await getNextPending();
+
+    if (!next) {
+      // Round complete: mark all words as learned
+      const all = await db.rounds.toArray();
+      await Promise.all(
+        all.map((r) => db.words.update(r.wordId, { ok: true })),
+      );
+      await clearRounds();
+      setState(INITIAL_STATE);
+      return;
+    }
+
+    setState((s) => ({
+      ...s,
+      current: next,
+      selectedAnswer: null,
+      answerState: "idle",
+    }));
+  }, []);
+
   // ── Select answer ───────────────────────────────────────────────────────────
   const selectAnswer = useCallback(
     async (answer: string) => {
       const { current, answerState } = state;
       if (!current || answerState !== "idle") return;
 
-      const normalize = (a: string) => a.replace(/___$/, "");
-      const isCorrect =
-        normalize(answer) === normalize(getCorrectAnswer(current.word));
+      const correct = getCorrectAnswer(current.word);
+      const isCorrect = answer === correct;
 
-      await db.rounds.update(current.id!, {
-        correct: isCorrect ? true : null,
-        ...(isCorrect
-          ? {}
-          : {
-              order: Date.now(),
-              answers: buildAnswers(current.word, pool),
-            }),
-      });
+      if (isCorrect) {
+        await db.rounds.update(current.id!, { correct: true });
+      } else {
+        // Wrong answer: reschedule with new answers
+        await db.rounds.update(current.id!, {
+          correct: null,
+          order: Date.now(),
+          answers: buildAnswers(current.word, pool),
+        });
+      }
+
+      const newAnswerState: AnswerState = isCorrect ? "correct" : "wrong";
+      const newCorrectCount = isCorrect ? state.correctCount + 1 : state.correctCount;
 
       setState((s) => ({
         ...s,
         selectedAnswer: answer,
-        answerState: isCorrect ? "correct" : "wrong",
-        correctCount: isCorrect ? s.correctCount + 1 : s.correctCount,
+        answerState: newAnswerState,
+        correctCount: newCorrectCount,
       }));
 
-      setTimeout(async () => {
-        const next = await getNextPending();
-
-        if (!next) {
-          const all = await db.rounds.toArray();
-          await Promise.all(
-            all.map((r) => db.words.update(r.wordId, { ok: true })),
-          );
-          await clearRounds();
-          setState(INITIAL_STATE);
-          return;
-        }
-
-        setState((s) => ({
-          ...s,
-          current: next,
-          selectedAnswer: null,
-          answerState: "idle",
-        }));
-      }, FLASH_MS);
+      // Auto next if correct
+      if (isCorrect) {
+        setTimeout(() => nextWord(), FLASH_MS);
+      }
     },
-    [state, pool],
+    [state, pool, nextWord],
   );
 
   return {
     currentWord: state.current?.word ?? null,
     answers: state.current?.answers ?? [],
+    correctAnswer: state.current ? getCorrectAnswer(state.current.word) : null,
     selectedAnswer: state.selectedAnswer,
     answerState: state.answerState,
     progress: { current: state.correctCount, total: state.total },
@@ -217,5 +238,6 @@ export function useVocabRound() {
     setup,
     resetRound,
     selectAnswer,
+    nextWord,
   };
 }
