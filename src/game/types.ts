@@ -1,5 +1,21 @@
 import type { Timestamp } from "firebase/firestore";
-import type { Word } from "../app/db";
+
+export type TEntry = {
+  type: string;
+  thai: string[];
+};
+
+export type Word = {
+  word: string;
+  type: string;
+  level: string;
+  ox3000: boolean;
+  ox5000: boolean;
+  pronounce: string;
+  entries: TEntry[];
+};
+
+export type ResultOutcome = "win" | "lose" | "draw";
 
 export type BattleWord = {
   word: string;

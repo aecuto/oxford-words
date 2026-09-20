@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { computeHit, clampElapsed } from "../game/damage";
 import { feedbackFor, type Feedback } from "../game/feedback";
 import { loadWordPool, pickBattleWords } from "../game/wordPool";
+import { recordResult } from "../game/progressService";
 import type { BattleWord, Popup } from "../game/types";
 import { MAX_HP, SOLO_BOSS, TURN_MS } from "../lib/gameConfig";
 import { useCountdown } from "./useCountdown";
@@ -28,6 +29,7 @@ export function useSoloBattle() {
   const lockRef = useRef(false);
   const timersRef = useRef<number[]>([]);
   const submittedAtRef = useRef(-1);
+  const recordedRef = useRef(false);
 
   const remainingMs = useCountdown(startedAt, TURN_MS);
 
@@ -44,6 +46,7 @@ export function useSoloBattle() {
     timersRef.current = [];
     lockRef.current = false;
     submittedAtRef.current = -1;
+    recordedRef.current = false;
     setWordIndex(0);
     setBossHp(SOLO_BOSS.hp);
     setMyHp(MAX_HP);
@@ -160,6 +163,14 @@ export function useSoloBattle() {
     if (submittedAtRef.current === wordIndex) return;
     submit(null);
   }, [remainingMs, outcome, startedAt, wordIndex, submit]);
+
+  useEffect(() => {
+    if (!outcome || recordedRef.current) return;
+    recordedRef.current = true;
+    recordResult(outcome, streak).catch((e) =>
+      console.error("progress:record", e)
+    );
+  }, [outcome, streak]);
 
   const view = useMemo(() => {
     const current = words[wordIndex] ?? null;

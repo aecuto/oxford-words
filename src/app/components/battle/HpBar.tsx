@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { cx } from "@emotion/css";
 
 type HpBarProps = {
@@ -18,6 +19,19 @@ function barColor(ratio: number): string {
 
 export function HpBar({ name, hp, max, streak, flip = false }: HpBarProps) {
   const ratio = Math.max(0, Math.min(1, hp / max));
+  const low = ratio <= 0.2 && hp > 0;
+  const [ghostRatio, setGhostRatio] = useState(ratio);
+
+  useEffect(() => {
+    if (ratio >= ghostRatio) {
+      /* eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot: snap ghost bar forward when hp recovers */
+      setGhostRatio(ratio);
+      return;
+    }
+    const t = window.setTimeout(() => setGhostRatio(ratio), 350);
+    return () => window.clearTimeout(t);
+  }, [ratio, ghostRatio]);
+
   return (
     <div className="flex-1 min-w-0">
       <div
@@ -46,18 +60,21 @@ export function HpBar({ name, hp, max, streak, flip = false }: HpBarProps) {
           {hp}/{max}
         </span>
       </div>
-      <div className="relative h-5 rounded-md border-2 border-gray-800 dark:border-gray-300 bg-gray-300 dark:bg-gray-700 overflow-hidden shadow-inner">
-        <div
-          className={cx(
-            "absolute inset-y-0 flex",
-            flip && "justify-end"
-          )}
-        >
+      <div
+        className={cx(
+          "relative h-4 rounded-full border border-gray-800 dark:border-gray-300 bg-gray-300 dark:bg-gray-700 overflow-hidden transition-shadow",
+          low && "shadow-[0_0_10px_rgba(239,68,68,0.6)]"
+        )}
+      >
+        <div className={cx("absolute inset-0 flex", flip && "justify-end")}>
           <div
-            className={cx(
-              "h-full transition-all duration-500 ease-out",
-              barColor(ratio)
-            )}
+            className="h-full bg-white/80 transition-all duration-500 ease-out"
+            style={{ width: `${ghostRatio * 100}%` }}
+          />
+        </div>
+        <div className={cx("absolute inset-0 flex", flip && "justify-end")}>
+          <div
+            className={cx("h-full transition-all duration-200 ease-out", barColor(ratio))}
             style={{ width: `${ratio * 100}%` }}
           />
         </div>

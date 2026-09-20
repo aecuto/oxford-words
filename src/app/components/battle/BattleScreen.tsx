@@ -4,12 +4,14 @@ import { useEffect, useRef } from "react";
 import { cx } from "@emotion/css";
 import type { BattleView } from "../../useBattleRoom";
 import { TURN_MS, WORD_SOUND_DELAY_MS } from "../../../lib/gameConfig";
+import { playSfx } from "../../../lib/sfx";
 import { Card, CardBody } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { AnswerGrid } from "./AnswerGrid";
 import { DamagePopup } from "./DamagePopup";
 import { FlashOverlay, useCritEffects } from "./EffectLayer";
 import { HpBar } from "./HpBar";
+import { SoundToggle } from "./SoundToggle";
 import { TimerBar } from "./TimerBar";
 
 type BattleScreenProps = {
@@ -44,13 +46,32 @@ export function BattleScreen({
   const result = view.outcome ? RESULT_TEXT[view.outcome] : null;
 
   const playRef = useRef(onPlayWord);
-  playRef.current = onPlayWord;
+  useEffect(() => {
+    playRef.current = onPlayWord;
+  });
   const wordText = view.word?.word;
   useEffect(() => {
     if (!wordText) return;
     const t = window.setTimeout(() => playRef.current(), WORD_SOUND_DELAY_MS);
     return () => window.clearTimeout(t);
   }, [wordText]);
+
+  const seenPopups = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    for (const p of view.popups) {
+      if (seenPopups.current.has(p.id)) continue;
+      seenPopups.current.add(p.id);
+      if (p.side === "opp") playSfx(p.crit ? "crit" : "hit");
+      else playSfx("hurt");
+    }
+  }, [view.popups]);
+
+  const outcome = view.outcome;
+  useEffect(() => {
+    if (!outcome) return;
+    const t = window.setTimeout(() => playSfx(outcome), 600);
+    return () => window.clearTimeout(t);
+  }, [outcome]);
 
   return (
     <div
@@ -103,6 +124,7 @@ export function BattleScreen({
         <div className="flex-1">
           <TimerBar remainingMs={view.remainingMs} totalMs={TURN_MS} />
         </div>
+        <SoundToggle />
       </div>
 
       {/* Word card */}

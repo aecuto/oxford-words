@@ -24,6 +24,7 @@ export const SOLO_BOSS = {
 } as const;
 
 export const COLLECTION = "oxfordwords_rooms";
+export const PROGRESS_COLLECTION = "oxfordwords_progress";
 
 export const ROOM_CODE_LEN = 4;
 export const ROOM_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";

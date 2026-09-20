@@ -1,6 +1,6 @@
 import { flatMap, sampleSize, shuffle, uniq } from "lodash";
-import { db, type Word } from "../app/db";
 import wordsJson from "../../translator/words.th.json";
+import type { Word } from "./types";
 import { WORDS_PER_BATTLE } from "../lib/gameConfig";
 import type { BattleWord } from "./types";
 
@@ -31,7 +31,7 @@ export function getCorrectAnswer(word: Word): string {
 export function buildAnswers(current: Word, pool: Word[]): string[] {
   const correct = getCorrectAnswer(current);
   const distractors = pool
-    .filter((w) => w.id !== current.id)
+    .filter((w) => w.word !== current.word)
     .map(getCorrectAnswer)
     .filter((a) => a && a !== correct);
   const picked = uniq(sampleSize(distractors, 2));
@@ -59,11 +59,7 @@ export function pickBattleWords(
 }
 
 export async function loadWordPool(): Promise<Word[]> {
-  const count = await db.words.count();
-  if (count === 0) {
-    await db.words.bulkAdd(wordsJson as Word[]);
-  }
-  const all = await db.words.toArray();
+  const all = wordsJson as Word[];
   const answerable = all.filter((w) => getCorrectAnswer(w) !== "");
   const ox3000 = answerable.filter((w) => w.ox3000);
   return ox3000.length >= WORDS_PER_BATTLE ? ox3000 : answerable;

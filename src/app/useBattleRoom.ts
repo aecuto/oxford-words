@@ -22,6 +22,7 @@ import type {
 import { TURN_GRACE_MS, TURN_MS } from "../lib/gameConfig";
 import { describeAuthError, ensureAnonAuth } from "../lib/firebase";
 import { useCountdown } from "./useCountdown";
+import { recordResult } from "../game/progressService";
 
 export type BattleOutcome = "win" | "lose" | "draw" | null;
 
@@ -57,8 +58,12 @@ export function useBattleRoom(code: string, name: string) {
   const hpLensRef = useRef<{ me: number; opp: number } | null>(null);
   const actingRef = useRef<Set<string>>(new Set());
   const submittedWordRef = useRef<number>(-1);
+  const liveSeenRef = useRef(false);
+  const recordedRoomRef = useRef<string | null>(null);
 
-  roomRef.current = room;
+  useEffect(() => {
+    roomRef.current = room;
+  }, [room]);
 
   const slotKey: SlotKey | null = useMemo(() => {
     if (!room || !uid) return null;
@@ -82,6 +87,32 @@ export function useBattleRoom(code: string, name: string) {
       setPopups((prev) => prev.filter((p) => p.id !== popup.id));
     }, 1100);
   }, []);
+
+  const damagePopupsFrom = useCallback(
+    (r: ClientRoom, key: SlotKey) => {
+      const oppKey: SlotKey = key === "p1" ? "p2" : "p1";
+      const myHits = r.players[key]?.hits ?? [];
+      const oppHits = r.players[oppKey]?.hits ?? [];
+      const lens = { me: oppHits.length, opp: myHits.length };
+      const prev = hpLensRef.current;
+      hpLensRef.current = lens;
+      if (!prev) return;
+
+      if (lens.opp > prev.opp) {
+        const hit = myHits[lens.opp - 1];
+        if (hit && hit.wordIndex === r.wordIndex) {
+          spawnPopup("opp", hit.damage, hit.crit);
+        }
+      }
+      if (lens.me > prev.me) {
+        const hit = oppHits[lens.me - 1];
+        if (hit && hit.wordIndex === r.wordIndex) {
+          spawnPopup("me", hit.damage, hit.crit);
+        }
+      }
+    },
+    [spawnPopup]
+  );
 
   useEffect(() => {
     let alive = true;
@@ -113,7 +144,23 @@ export function useBattleRoom(code: string, name: string) {
         }
 
         unsub = subscribeRoom(code, (r) => {
-          if (alive) setRoom(r);
+          if (!alive) return;
+          setRoom(r);
+          if (!r) {
+            hpLensRef.current = null;
+            return;
+          }
+          const key: SlotKey | null =
+            r.players.p1?.uid === myUid
+              ? "p1"
+              : r.players.p2?.uid === myUid
+                ? "p2"
+                : null;
+          if (!key) {
+            hpLensRef.current = null;
+            return;
+          }
+          damagePopupsFrom(r, key);
         });
       } catch (e) {
         console.error(e);
@@ -127,7 +174,7 @@ export function useBattleRoom(code: string, name: string) {
       alive = false;
       unsub?.();
     };
-  }, [code]);
+  }, [code, damagePopupsFrom]);
 
   const isHost = room != null && uid != null && room.hostUid === uid;
 
@@ -200,43 +247,13 @@ export function useBattleRoom(code: string, name: string) {
     );
   }, [remainingMs, room, slotKey, uid, acting]);
 
-  const damagePopupsFrom = useCallback(
-    (r: ClientRoom, key: SlotKey) => {
-      const oppKey: SlotKey = key === "p1" ? "p2" : "p1";
-      const myHits = r.players[key]?.hits ?? [];
-      const oppHits = r.players[oppKey]?.hits ?? [];
-      const lens = { me: oppHits.length, opp: myHits.length };
-      const prev = hpLensRef.current;
-      hpLensRef.current = lens;
-      if (!prev) return;
-
-      if (lens.opp > prev.opp) {
-        const hit = myHits[lens.opp - 1];
-        if (hit && hit.wordIndex === r.wordIndex) {
-          spawnPopup("opp", hit.damage, hit.crit);
-        }
-      }
-      if (lens.me > prev.me) {
-        const hit = oppHits[lens.me - 1];
-        if (hit && hit.wordIndex === r.wordIndex) {
-          spawnPopup("me", hit.damage, hit.crit);
-        }
-      }
-    },
-    [spawnPopup]
-  );
-
-  useEffect(() => {
-    if (!room || !slotKey) {
-      hpLensRef.current = null;
-      return;
-    }
-    damagePopupsFrom(room, slotKey);
-  }, [room, slotKey, damagePopupsFrom]);
-
-  useEffect(() => {
+  const feedbackResetKey = `${room?.wordIndex ?? "-"}|${room?.status ?? "-"}`;
+  const [prevFeedbackResetKey, setPrevFeedbackResetKey] =
+    useState(feedbackResetKey);
+  if (prevFeedbackResetKey !== feedbackResetKey) {
+    setPrevFeedbackResetKey(feedbackResetKey);
     setFeedback(null);
-  }, [room?.wordIndex, room?.status]);
+  }
 
   const submit = useCallback(
     async (answer: string | null) => {
@@ -341,6 +358,21 @@ export function useBattleRoom(code: string, name: string) {
       outcome,
     };
   }, [room, slotKey, feedback, remainingMs, popups]);
+
+  useEffect(() => {
+    if (room?.status === "playing") liveSeenRef.current = true;
+  }, [room]);
+
+  useEffect(() => {
+    const outcome = view?.outcome;
+    if (!outcome || !room || !slotKey) return;
+    if (!liveSeenRef.current) return;
+    if (recordedRoomRef.current === room.code) return;
+    recordedRoomRef.current = room.code;
+    recordResult(outcome, room.players[slotKey]?.streak ?? 0).catch((e) =>
+      console.error("progress:record", e)
+    );
+  }, [view, room, slotKey]);
 
   return {
     phase: error ? "error" : !view ? "loading" : room!.status,

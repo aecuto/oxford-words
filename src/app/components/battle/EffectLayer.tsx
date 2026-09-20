@@ -15,9 +15,11 @@ export function useCritEffects(popups: Popup[]) {
   useEffect(() => {
     const newCrit = popups.find((p) => p.crit && !seenIds.has(p.id));
     if (!newCrit) return;
+    /* eslint-disable react-hooks/set-state-in-effect -- one-shot: start a timed animation when a new crit popup arrives */
     setSeenIds((prev) => new Set(prev).add(newCrit.id));
     setShake(true);
     setFlash(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
     const t = window.setTimeout(() => {
       setShake(false);
       setFlash(false);

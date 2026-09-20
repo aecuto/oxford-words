@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardBody } from "./components/ui/Card";
@@ -11,18 +11,25 @@ import { describeAuthError, ensureAnonAuth } from "../lib/firebase";
 
 const NAME_KEY = "battle:name";
 
+const emptySubscribe = () => () => {};
+
 export default function BattleHub() {
   const router = useRouter();
-  const [isClient, setIsClient] = useState(false);
-  const [name, setName] = useState("");
+  const isClient = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  );
+  const [nameOverride, setNameOverride] = useState<string | null>(null);
+  const storedName = useSyncExternalStore(
+    emptySubscribe,
+    () => localStorage.getItem(NAME_KEY) ?? "",
+    () => ""
+  );
+  const name = nameOverride ?? storedName;
   const [joinCode, setJoinCode] = useState("");
   const [busy, setBusy] = useState<"create" | "join" | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setIsClient(true);
-    setName(localStorage.getItem(NAME_KEY) ?? "");
-  }, []);
 
   if (!isClient) {
     return (
@@ -35,7 +42,7 @@ export default function BattleHub() {
   }
 
   const saveName = (value: string) => {
-    setName(value);
+    setNameOverride(value);
     localStorage.setItem(NAME_KEY, value);
   };
 

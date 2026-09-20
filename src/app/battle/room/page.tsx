@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useState, useSyncExternalStore } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { cx } from "@emotion/css";
 import { useBattleRoom } from "../../useBattleRoom";
@@ -12,15 +12,17 @@ import { playWordAudio } from "../../playWordAudio";
 
 const NAME_KEY = "battle:name";
 
+const emptySubscribe = () => () => {};
+
 function RoomPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const code = (searchParams.get("id") ?? "").toUpperCase();
-  const [name, setName] = useState("");
-
-  useEffect(() => {
-    setName(localStorage.getItem(NAME_KEY) ?? "");
-  }, []);
+  const name = useSyncExternalStore(
+    emptySubscribe,
+    () => localStorage.getItem(NAME_KEY) ?? "",
+    () => ""
+  );
 
   const { phase, error, view, submit } = useBattleRoom(code, name);
 
