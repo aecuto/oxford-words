@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Popup } from "../../../game/types";
 
 type EffectLayerProps = {
@@ -8,26 +8,30 @@ type EffectLayerProps = {
 };
 
 export function useCritEffects(popups: Popup[]) {
-  const [shake, setShake] = useState(false);
-  const [flash, setFlash] = useState(false);
-  const [seenIds, setSeenIds] = useState<Set<number>>(new Set());
+  const [active, setActive] = useState(false);
+  const seenIds = useRef<Set<number>>(new Set());
+  const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const newCrit = popups.find((p) => p.crit && !seenIds.has(p.id));
+    const newCrit = popups.find((p) => p.crit && !seenIds.current.has(p.id));
     if (!newCrit) return;
-    /* eslint-disable react-hooks/set-state-in-effect -- one-shot: start a timed animation when a new crit popup arrives */
-    setSeenIds((prev) => new Set(prev).add(newCrit.id));
-    setShake(true);
-    setFlash(true);
-    /* eslint-enable react-hooks/set-state-in-effect */
-    const t = window.setTimeout(() => {
-      setShake(false);
-      setFlash(false);
+    seenIds.current.add(newCrit.id);
+    setActive(true);
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      setActive(false);
     }, 500);
-    return () => window.clearTimeout(t);
-  }, [popups, seenIds]);
+  }, [popups]);
 
-  return { shake, flash };
+  useEffect(
+    () => () => {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    },
+    []
+  );
+
+  return { shake: active, flash: active };
 }
 
 export function FlashOverlay({ active }: { active: boolean }) {

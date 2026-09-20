@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { cx } from "@emotion/css";
 import type { BattleView } from "../../useBattleRoom";
+import { isCritReady } from "../../../game/damage";
 import { TURN_MS, WORD_SOUND_DELAY_MS } from "../../../lib/gameConfig";
 import { playSfx } from "../../../lib/sfx";
 import { Card, CardBody } from "../ui/Card";
@@ -45,6 +46,7 @@ export function BattleScreen({
   const { shake, flash } = useCritEffects(view.popups);
   const ended = view.outcome !== null;
   const result = view.outcome ? RESULT_TEXT[view.outcome] : null;
+  const critCharged = isCritReady(view.myStreak);
 
   const playRef = useRef(onPlayWord);
   useEffect(() => {
@@ -162,7 +164,7 @@ export function BattleScreen({
       {/* Feedback */}
       <div className="mb-2 grid grid-rows-[2.25rem_1.75rem] sm:grid-rows-[2.5rem_1.75rem] justify-items-center">
         <div className="flex items-center justify-center w-full">
-          {view.feedback && (
+          {view.feedback ? (
             <span
               className={cx(
                 "animate-popIn text-xl font-black tracking-wide",
@@ -178,7 +180,7 @@ export function BattleScreen({
                 <span className="ml-1 tabular-nums">−{view.feedback.damage}</span>
               )}
             </span>
-          )}
+          ) : null}
         </div>
         <div className="flex items-center justify-center w-full">
           {view.waitingOpp && (
@@ -209,6 +211,7 @@ export function BattleScreen({
           selected={view.selected}
           answerState={view.answerState}
           disabled={ended || view.answerState !== "idle"}
+          crit={critCharged && !ended && view.answerState === "idle"}
           onSelect={(answer) => onAnswer(answer)}
         />
       )}

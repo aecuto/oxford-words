@@ -29,9 +29,13 @@ function Stat({
   tone: string;
 }) {
   return (
-    <div className="rounded-lg bg-gray-800/60 py-2">
-      <div className={`text-lg font-black tabular-nums ${tone}`}>{value}</div>
-      <div className="text-[10px] uppercase tracking-wider text-gray-500">
+    <div className="min-w-0 px-1 rounded-lg bg-gray-800/60 py-2">
+      <div
+        className={`text-base sm:text-lg font-black tabular-nums truncate ${tone}`}
+      >
+        {value}
+      </div>
+      <div className="text-[10px] uppercase tracking-wider text-gray-500 truncate">
         {label}
       </div>
     </div>
@@ -77,7 +81,7 @@ export function ProgressPanel() {
   return (
     <Card className="mb-5 sm:mb-8">
       <CardBody className="p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 mb-3">
           <h2 className="text-base sm:text-lg font-black tracking-wide text-gray-200">
             PROGRESS
           </h2>
@@ -97,7 +101,7 @@ export function ProgressPanel() {
           />
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
           <Stat label="Mastered" value={mastered} tone="text-emerald-400" />
           <Stat label="Learning" value={learning} tone="text-blue-400" />
           <Stat

@@ -20,7 +20,7 @@ export default function BattleHub() {
   const isClient = useSyncExternalStore(
     emptySubscribe,
     () => true,
-    () => false
+    () => false,
   );
   const { name, saveName } = useStoredName();
   const [joinCode, setJoinCode] = useState("");
@@ -43,11 +43,7 @@ export default function BattleHub() {
     try {
       const uid = await ensureAnonAuth();
       const pool = await loadWordPool();
-      const words = pickBattleWords(
-        pool,
-        WORDS_PER_BATTLE,
-        loadWordStats()
-      );
+      const words = pickBattleWords(pool, WORDS_PER_BATTLE, loadWordStats());
       const code = await createRoom(uid, name.trim() || "Player 1", words);
       router.push(`/battle/room?id=${code}`);
     } catch (e) {
@@ -76,21 +72,22 @@ export default function BattleHub() {
   };
 
   return (
-    <div className="dark min-h-dvh pt-safe pb-safe">
-      <div className="px-3 sm:p-6 m-auto w-full max-w-screen-md">
-        <h1 className="text-3xl sm:text-4xl font-black text-center mt-6 sm:mt-8 mb-1 tracking-wide">
-          BATTLE
-        </h1>
-        <p className="text-center text-sm text-gray-400 mb-5 sm:mb-6 max-w-md m-auto">
-          Same word for both fighters. Answer fast, hit hard, chain 3 for a
-          CRITICAL.
-        </p>
+    <div className="dark min-h-dvh pt-safe pb-safe flex flex-col">
+      <div className="px-3 sm:px-6 m-auto w-full max-w-screen-md pt-6 sm:pt-10 pb-8 sm:pb-12">
+        <div className="text-center mb-4">
+          <p className="text-xs sm:text-sm font-black uppercase tracking-[0.3em] text-gray-500">
+            BATTLE
+          </p>
+          <h1 className="text-4xl sm:text-5xl font-black tracking-wide leading-none mt-1.5 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent select-none">
+            Oxford Words
+          </h1>
+        </div>
 
         <ProgressPanel />
 
-        <div className="grid md:grid-cols-2 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 items-stretch gap-3 sm:gap-4 lg:gap-5">
           <Card className="border-2 border-blue-500/40">
-            <CardBody className="p-4 sm:p-5 space-y-4">
+            <CardBody className="p-4 sm:p-5 lg:p-6 space-y-3.5 sm:space-y-4">
               <div>
                 <h2 className="text-xl sm:text-2xl font-black text-blue-400">
                   VS PLAYER
@@ -105,30 +102,34 @@ export default function BattleHub() {
                 onChange={(e) => saveName(e.target.value)}
                 maxLength={16}
                 placeholder="Your name"
-                className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-600 text-base text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 sm:py-3 rounded-lg bg-gray-800 border border-gray-600 text-base text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
 
               <Button
                 onClick={create}
                 disabled={busy !== null}
-                className="w-full lg:text-lg lg:py-3"
+                className="w-full sm:text-lg sm:py-3.5"
               >
                 {busy === "create" ? "Creating room..." : "Create room"}
               </Button>
 
-              <div className="flex items-center gap-2 pt-1">
+              <div className="flex items-stretch gap-2 pt-1">
                 <input
                   value={joinCode}
                   onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                   maxLength={4}
+                  inputMode="text"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
                   placeholder="CODE"
-                  className="flex-1 min-w-0 px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-600 font-mono font-bold text-lg tracking-widest uppercase text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="flex-1 min-w-0 px-3 py-2.5 sm:py-3 rounded-lg bg-gray-800 border border-gray-600 font-mono font-bold text-base sm:text-lg tracking-widest uppercase text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <Button
                   onClick={join}
                   disabled={busy !== null}
                   variant="blue"
-                  className="shrink-0"
+                  className="shrink-0 min-h-[3rem] sm:min-h-0"
                 >
                   {busy === "join" ? "..." : "Join"}
                 </Button>
@@ -137,7 +138,7 @@ export default function BattleHub() {
           </Card>
 
           <Card className="border-2 border-purple-500/40">
-            <CardBody className="p-4 sm:p-5 flex flex-col h-full">
+            <CardBody className="p-4 sm:p-5 lg:p-6 flex flex-col h-full">
               <div>
                 <h2 className="text-xl sm:text-2xl font-black text-purple-400">
                   VS BOT
@@ -147,14 +148,17 @@ export default function BattleHub() {
                 </p>
               </div>
 
-              <div className="flex-1 flex items-center justify-center py-6 sm:py-8">
-                <span className="text-4xl sm:text-5xl font-black text-gray-700 dark:text-gray-700 select-none tracking-widest">
+              <div className="flex-1 flex items-center justify-center py-4 sm:py-8">
+                <span className="text-3xl sm:text-5xl font-black text-gray-700 dark:text-gray-700 select-none tracking-widest">
                   HP 300
                 </span>
               </div>
 
               <Link href="/solo" className="mt-auto">
-                <Button variant="purple" className="w-full lg:text-lg lg:py-3">
+                <Button
+                  variant="purple"
+                  className="w-full sm:text-lg sm:py-3.5"
+                >
                   Play
                 </Button>
               </Link>
@@ -163,7 +167,7 @@ export default function BattleHub() {
         </div>
 
         {error && (
-          <p className="text-sm text-red-400 text-center mt-4 max-w-screen-sm m-auto">
+          <p className="text-sm text-red-400 text-center mt-4 max-w-screen-sm m-auto px-2 break-words">
             {error}
           </p>
         )}

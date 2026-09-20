@@ -11,6 +11,8 @@ import {
 
 export type DamageTier = "high" | "medium" | "low";
 
+export const CRIT_PERIOD = STREAK_FOR_CRIT + 1;
+
 function tierFor(elapsedMs: number): DamageTier {
   if (elapsedMs <= HIGH_MS) return "high";
   if (elapsedMs <= MEDIUM_MS) return "medium";
@@ -18,7 +20,11 @@ function tierFor(elapsedMs: number): DamageTier {
 }
 
 function isCrit(streakAfter: number): boolean {
-  return streakAfter % STREAK_FOR_CRIT === 0;
+  return streakAfter > 0 && streakAfter % CRIT_PERIOD === 0;
+}
+
+export function isCritReady(streak: number): boolean {
+  return streak > 0 && streak % CRIT_PERIOD === STREAK_FOR_CRIT;
 }
 
 export function computeHit(

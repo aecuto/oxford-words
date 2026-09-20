@@ -21,9 +21,12 @@ export function DamagePopup({ popup, flip = false }: DamagePopupProps) {
       )}
     >
       {popup.crit && (
-        <span className="block text-[10px] tracking-widest text-yellow-300">
-          CRITICAL
-        </span>
+        <>
+          <span className="absolute -inset-2 rounded-full border-2 border-yellow-300/80 animate-critRing pointer-events-none" />
+          <span className="block text-[10px] tracking-widest text-yellow-300">
+            CRITICAL
+          </span>
+        </>
       )}{" "}
       -{popup.damage}
     </div>

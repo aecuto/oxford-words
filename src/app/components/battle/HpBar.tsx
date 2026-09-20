@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { cx } from "@emotion/css";
-import { STREAK_FOR_CRIT } from "../../../lib/gameConfig";
+import { isCritReady } from "../../../game/damage";
 
 type HpBarProps = {
   name: string;
@@ -15,25 +14,13 @@ type HpBarProps = {
 function barColor(ratio: number): string {
   if (ratio > 0.5) return "bg-gradient-to-b from-emerald-400 to-emerald-600";
   if (ratio > 0.2) return "bg-gradient-to-b from-amber-300 to-amber-500";
-  return "bg-gradient-to-b from-red-400 to-red-600 animate-pulse";
+  return "bg-gradient-to-b from-red-400 to-red-600";
 }
 
 export function HpBar({ name, hp, max, streak, flip = false }: HpBarProps) {
   const ratio = Math.max(0, Math.min(1, hp / max));
   const low = ratio <= 0.2 && hp > 0;
-  const charge = streak % STREAK_FOR_CRIT;
-  const critReady = streak > 0 && charge === STREAK_FOR_CRIT - 1;
-  const [ghostRatio, setGhostRatio] = useState(ratio);
-
-  useEffect(() => {
-    if (ratio >= ghostRatio) {
-      /* eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot: snap ghost bar forward when hp recovers */
-      setGhostRatio(ratio);
-      return;
-    }
-    const t = window.setTimeout(() => setGhostRatio(ratio), 350);
-    return () => window.clearTimeout(t);
-  }, [ratio, ghostRatio]);
+  const charged = isCritReady(streak);
 
   return (
     <div className="flex-1 min-w-0">
@@ -43,12 +30,14 @@ export function HpBar({ name, hp, max, streak, flip = false }: HpBarProps) {
           flip && "flex-row-reverse"
         )}
       >
-        <span className="font-bold truncate max-w-[45%] sm:max-w-[55%]">{name}</span>
+        <span className="font-bold truncate max-w-[40%] sm:max-w-[50%]">
+          {name}
+        </span>
         <span
           className={cx(
             "text-xs font-black px-1.5 py-0.5 rounded",
-            critReady
-              ? "bg-yellow-400 text-yellow-950 animate-pulse shadow-[0_0_8px_rgba(250,204,21,0.8)]"
+            charged
+              ? "bg-yellow-400 text-yellow-950"
               : streak >= 1
                 ? "bg-orange-500 text-white"
                 : "bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400"
@@ -56,40 +45,31 @@ export function HpBar({ name, hp, max, streak, flip = false }: HpBarProps) {
         >
           x{streak}
         </span>
-        <span className="flex gap-0.5" aria-hidden>
-          {Array.from({ length: STREAK_FOR_CRIT - 1 }, (_, i) => (
-            <span
-              key={i}
-              className={cx(
-                "h-1.5 w-1.5 rounded-full",
-                i < charge
-                  ? critReady
-                    ? "bg-yellow-400"
-                    : "bg-orange-400"
-                  : "bg-gray-300 dark:bg-gray-600"
-              )}
-            />
-          ))}
+        {charged && (
+          <span className="text-[10px] font-black tracking-widest text-yellow-500 dark:text-yellow-300">
+            CRIT
+          </span>
+        )}
+        <span className="ml-auto text-[10px] font-bold tabular-nums text-gray-400 dark:text-gray-500">
+          {hp}/{max}
         </span>
       </div>
       <div
         className={cx(
-          "relative h-4 rounded-full border border-gray-800 dark:border-gray-300 bg-gray-300 dark:bg-gray-700 overflow-hidden transition-shadow",
-          low && "shadow-[0_0_10px_rgba(239,68,68,0.6)]"
+          "relative h-4 rounded-full border bg-gray-300 dark:bg-gray-700 overflow-hidden",
+          charged
+            ? "border-yellow-400 shadow-[0_0_10px_rgba(250,204,21,0.45)]"
+            : "border-gray-800 dark:border-gray-300",
+          low && !charged && "shadow-[0_0_10px_rgba(239,68,68,0.6)]"
         )}
       >
         <div className={cx("absolute inset-0 flex", flip && "justify-end")}>
           <div
-            className="h-full bg-white/80 transition-all duration-500 ease-out"
-            style={{ width: `${ghostRatio * 100}%` }}
-          />
-        </div>
-        <div className={cx("absolute inset-0 flex", flip && "justify-end")}>
-          <div
-            className={cx("h-full transition-all duration-200 ease-out", barColor(ratio))}
+            className={cx("h-full", barColor(ratio))}
             style={{ width: `${ratio * 100}%` }}
           />
         </div>
+        <div className="absolute inset-x-0 top-0 h-1/2 rounded-t-full bg-white/20 pointer-events-none" />
       </div>
     </div>
   );
