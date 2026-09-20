@@ -1,0 +1,203 @@
+"use client";
+
+import { useEffect, useRef } from "react";
+import { cx } from "@emotion/css";
+import type { BattleView } from "../../useBattleRoom";
+import { TURN_MS, WORD_SOUND_DELAY_MS } from "../../../lib/gameConfig";
+import { Card, CardBody } from "../ui/Card";
+import { Button } from "../ui/Button";
+import { AnswerGrid } from "./AnswerGrid";
+import { DamagePopup } from "./DamagePopup";
+import { FlashOverlay, useCritEffects } from "./EffectLayer";
+import { HpBar } from "./HpBar";
+import { TimerBar } from "./TimerBar";
+
+type BattleScreenProps = {
+  view: BattleView;
+  myMaxHp: number;
+  oppMaxHp: number;
+  allowTimeoutSubmit: boolean;
+  onAnswer: (answer: string | null) => void;
+  onPlayWord: () => void;
+  onExit: () => void;
+  onRematch?: () => void;
+};
+
+const RESULT_TEXT = {
+  win: { title: "VICTORY", color: "text-emerald-500" },
+  lose: { title: "DEFEAT", color: "text-red-500" },
+  draw: { title: "DRAW", color: "text-amber-500" },
+} as const;
+
+export function BattleScreen({
+  view,
+  myMaxHp,
+  oppMaxHp,
+  allowTimeoutSubmit,
+  onAnswer,
+  onPlayWord,
+  onExit,
+  onRematch,
+}: BattleScreenProps) {
+  const { shake, flash } = useCritEffects(view.popups);
+  const ended = view.outcome !== null;
+  const result = view.outcome ? RESULT_TEXT[view.outcome] : null;
+
+  const playRef = useRef(onPlayWord);
+  playRef.current = onPlayWord;
+  const wordText = view.word?.word;
+  useEffect(() => {
+    if (!wordText) return;
+    const t = window.setTimeout(() => playRef.current(), WORD_SOUND_DELAY_MS);
+    return () => window.clearTimeout(t);
+  }, [wordText]);
+
+  return (
+    <div
+      className={cx(
+        "relative max-w-screen-md m-auto p-3 select-none",
+        shake && "animate-shake"
+      )}
+    >
+      <FlashOverlay active={flash} />
+
+      {/* HP bars */}
+      <div className="relative flex items-start gap-3 mb-4">
+        <div className="relative flex-1">
+          <HpBar
+            name={view.myName}
+            hp={view.myHp}
+            max={myMaxHp}
+            streak={view.myStreak}
+          />
+          {view.popups
+            .filter((p) => p.side === "me")
+            .map((p) => (
+              <DamagePopup key={p.id} popup={p} />
+            ))}
+        </div>
+        <span className="font-black text-lg text-gray-400 dark:text-gray-500 pt-3">
+          VS
+        </span>
+        <div className="relative flex-1">
+          <HpBar
+            name={view.oppName}
+            hp={view.oppHp}
+            max={oppMaxHp}
+            streak={view.oppStreak}
+            flip
+          />
+          {view.popups
+            .filter((p) => p.side === "opp")
+            .map((p) => (
+              <DamagePopup key={p.id} popup={p} flip />
+            ))}
+        </div>
+      </div>
+
+      {/* Round + timer */}
+      <div className="flex items-center gap-3 mb-3">
+        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-300 shrink-0">
+          {view.wordNumber} / {view.wordTotal}
+        </span>
+        <div className="flex-1">
+          <TimerBar remainingMs={view.remainingMs} totalMs={TURN_MS} />
+        </div>
+      </div>
+
+      {/* Word card */}
+      <div
+        onClick={onPlayWord}
+        className="mb-4 cursor-pointer hover:scale-[1.01] transition-transform"
+      >
+        <Card className="border-2 border-transparent hover:border-blue-400/50">
+          <CardBody className="text-center py-6">
+            <h3 className="text-3xl md:text-4xl font-bold mb-1">
+              {view.word?.word ?? "..."}
+            </h3>
+            <div className="flex items-center justify-center gap-2">
+              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 font-medium">
+                {view.word?.type}
+              </span>
+              <span className="text-xs text-gray-400">
+                tap word for pronunciation
+              </span>
+            </div>
+          </CardBody>
+        </Card>
+      </div>
+
+      {/* Feedback */}
+      <div className="h-10 mb-2 flex items-center justify-center">
+        {view.feedback && (
+          <span
+            className={cx(
+              "animate-popIn text-xl font-black tracking-wide",
+              view.feedback.tone === "good"
+                ? view.feedback.crit
+                  ? "text-orange-400"
+                  : "text-emerald-500"
+                : "text-red-500"
+            )}
+          >
+            {view.feedback.text}
+          </span>
+        )}
+        {view.waitingOpp && (
+          <span className="text-sm text-gray-400 animate-pulse">
+            Waiting for opponent...
+          </span>
+        )}
+      </div>
+
+      {/* Answers */}
+      {view.word && (
+        <AnswerGrid
+          word={view.word}
+          selected={view.selected}
+          answerState={view.answerState}
+          disabled={ended || view.answerState !== "idle"}
+          onSelect={(answer) => onAnswer(answer)}
+        />
+      )}
+
+      {allowTimeoutSubmit && !ended && view.answerState === "idle" && (
+        <div className="flex justify-center mt-3">
+          <Button
+            onClick={() => onAnswer(null)}
+            className="text-sm px-4 py-2 bg-gray-500 border-gray-600 hover:bg-gray-600"
+          >
+            Give up this word
+          </Button>
+        </div>
+      )}
+
+      {/* Result overlay */}
+      {ended && result && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 rounded-xl">
+          <Card className="w-72 animate-popIn">
+            <CardBody className="text-center space-y-3 p-6">
+              <h2 className={cx("text-3xl font-black", result.color)}>
+                {result.title}
+              </h2>
+              <p className="text-sm text-gray-400">
+                {view.myName} {view.myHp} — {view.oppHp} {view.oppName}
+              </p>
+              <div className="flex flex-col gap-2 pt-2">
+                {onRematch && (
+                  <Button onClick={onRematch}>Play again</Button>
+                )}
+                <Button
+                  onClick={onExit}
+                  className="bg-gray-500 border-gray-600 hover:bg-gray-600"
+                >
+                  Back to lobby
+                </Button>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}

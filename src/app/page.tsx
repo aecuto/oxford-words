@@ -1,183 +1,164 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { db, resetDatabase } from "./db";
-import wordsJson from "../../translator/words.th.json";
-import { useTheme } from "next-themes";
-import { cx } from "@emotion/css";
-import SwitchMode from "./components/switch-mode";
-import { useWordFilter, LIST_OPTIONS } from "./useWordFilter";
-import { useVocabRound } from "./useVocabRound";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Card, CardBody } from "./components/ui/Card";
 import { Button } from "./components/ui/Button";
-import { Select } from "./components/ui/Select";
-import { Typography } from "./components/ui/Typography";
+import { pickBattleWords, loadWordPool } from "../game/wordPool";
+import { createRoom } from "../game/roomService";
+import { describeAuthError, ensureAnonAuth } from "../lib/firebase";
 
-export default function Home() {
-  const { theme } = useTheme();
+const NAME_KEY = "battle:name";
+
+export default function BattleHub() {
+  const router = useRouter();
   const [isClient, setIsClient] = useState(false);
+  const [name, setName] = useState("");
+  const [joinCode, setJoinCode] = useState("");
+  const [busy, setBusy] = useState<"create" | "join" | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const [revealed, setRevealed] = useState(false);
-
-  const { filter, list, setList, words, total } = useWordFilter();
-  const {
-    currentWord,
-    answers,
-    correctAnswer,
-    selectedAnswer,
-    answerState,
-    progress,
-    setup,
-    selectAnswer,
-    nextWord,
-  } = useVocabRound();
-
-  useEffect(() => setIsClient(true), []);
   useEffect(() => {
-    if (words && words.length >= 10) setup(words);
-  }, [words, setup]);
-  useEffect(() => setRevealed(false), [currentWord]);
+    setIsClient(true);
+    setName(localStorage.getItem(NAME_KEY) ?? "");
+  }, []);
 
   if (!isClient) {
     return (
-      <div className="flex w-full h-screen items-center justify-center">
-        <div className="loader" />
+      <div className="dark">
+        <div className="flex w-full h-screen items-center justify-center">
+          <div className="loader" />
+        </div>
       </div>
     );
   }
 
-  const showAnswer = () => {
-    if (currentWord?.pronounce)
-      new Audio(currentWord.pronounce).play().catch(() => {});
-    setRevealed(true);
+  const saveName = (value: string) => {
+    setName(value);
+    localStorage.setItem(NAME_KEY, value);
+  };
+
+  const create = async () => {
+    setError(null);
+    setBusy("create");
+    try {
+      const uid = await ensureAnonAuth();
+      const pool = await loadWordPool();
+      const words = pickBattleWords(pool);
+      const code = await createRoom(uid, name.trim() || "Player 1", words);
+      router.push(`/battle/room?id=${code}`);
+    } catch (e) {
+      console.error(e);
+      setError(describeAuthError(e));
+      setBusy(null);
+    }
+  };
+
+  const join = async () => {
+    const code = joinCode.trim().toUpperCase();
+    if (code.length < 4) {
+      setError("Enter the 4-character room code.");
+      return;
+    }
+    setError(null);
+    setBusy("join");
+    try {
+      await ensureAnonAuth();
+      router.push(`/battle/room?id=${code}`);
+    } catch (e) {
+      console.error(e);
+      setError(describeAuthError(e));
+      setBusy(null);
+    }
   };
 
   return (
-    <div
-      className={cx("p-2 m-auto max-w-screen-md", theme === "dark" && "dark")}
-    >
-      {/* Overview */}
-      <div className="flex items-center justify-between mb-5 px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-800">
-        <div className="flex items-center gap-2">
-          <span className="text-emerald-500 text-sm">✓</span>
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {(total ?? 0) - (words?.length ?? 0)}
-            <span className="text-gray-400 font-normal"> / {total}</span>
-          </span>
-        </div>
-        <span className="text-sm font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400">
-          {total
-            ? (((total - (words?.length ?? 0)) / total) * 100).toFixed(2)
-            : "0.00"}
-          %
-        </span>
-      </div>
+    <div className="dark min-h-screen">
+      <div className="p-3 m-auto max-w-screen-md">
+        <h1 className="text-4xl font-black text-center mt-8 mb-1 tracking-wide">
+          BATTLE
+        </h1>
+        <p className="text-center text-sm text-gray-400 mb-8">
+          Same word for both fighters. Answer fast, hit hard, chain 3 for a
+          CRITICAL.
+        </p>
 
-      {/* Progress */}
-      <div className="flex items-center gap-2 mb-4 text-sm text-gray-500 dark:text-gray-400">
-        <span>
-          {progress.current} / {progress.total}
-        </span>
-        <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-blue-500 rounded-full transition-all duration-500"
-            style={{ width: `${(progress.current / progress.total) * 100}%` }}
-          />
-        </div>
-      </div>
+        <div className="grid md:grid-cols-2 gap-4">
+          <Card className="border-2 border-blue-500/40">
+            <CardBody className="p-5 space-y-4">
+              <div>
+                <h2 className="text-2xl font-black text-blue-400">VS PLAYER</h2>
+                <p className="text-xs text-gray-400 mt-1">
+                  Create a room, send the code, race in real time.
+                </p>
+              </div>
 
-      {/* Current word card */}
-      <div onClick={() => showAnswer()} className="grid grid-cols-1 gap-4 mb-6">
-        <Card className="cursor-pointer hover:shadow-lg transition-all border-2 border-transparent">
-          <CardBody className="text-center">
-            <h3 className="text-xl font-medium mb-1">
-              {currentWord?.word ?? "-"}
-            </h3>
-            <p className="text-sm mb-2">{currentWord?.level}</p>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 font-medium">
-              {currentWord?.type}
-            </span>
-          </CardBody>
-        </Card>
-      </div>
+              <input
+                value={name}
+                onChange={(e) => saveName(e.target.value)}
+                maxLength={16}
+                placeholder="Your name"
+                className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
 
-      {/* Answer cards */}
-      <Typography className="mb-4 text-lg font-medium">
-        Thai meaning groups:
-      </Typography>
-      {!revealed ? (
-        <div
-          className="flex items-center justify-center h-40 text-gray-400 text-sm cursor-pointer"
-          onClick={() => showAnswer()}
-        >
-          Tap this or the word to reveal answers
-        </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-5">
-            {answers.map((answer, idx) => {
-              const isSelected = selectedAnswer === answer;
-              const isCorrect = isSelected && answerState === "correct";
-              const isWrong = isSelected && answerState === "wrong";
-              const isActuallyCorrect = correctAnswer && answer === correctAnswer;
+              <Button
+                onClick={create}
+                disabled={busy !== null}
+                className="w-full lg:text-lg lg:py-3"
+              >
+                {busy === "create" ? "Creating room..." : "Create room"}
+              </Button>
 
-              return (
-                <Card
-                  key={idx}
-                  onClick={() => selectAnswer(answer)}
-                  className={cx(
-                    "transition-all border-2",
-                    answerState !== "idle"
-                      ? "opacity-50 cursor-not-allowed"
-                      : "cursor-pointer hover:shadow-lg",
-                    isCorrect &&
-                      "border-green-500 bg-green-100 dark:bg-green-900",
-                    isWrong && "border-red-500 bg-red-100 dark:bg-red-900",
-                    // Show correct answer when wrong
-                    answerState === "wrong" && isActuallyCorrect &&
-                      "!opacity-100 border-green-500 bg-green-100 dark:bg-green-900",
-                    !isCorrect && !isWrong && !(answerState === "wrong" && isActuallyCorrect) && "border-transparent",
-                  )}
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  maxLength={4}
+                  placeholder="CODE"
+                  className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-gray-800 border border-gray-600 font-mono font-bold text-lg tracking-widest uppercase text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <Button
+                  onClick={join}
+                  disabled={busy !== null}
+                  className="bg-blue-500 border-blue-600 hover:bg-blue-600 shrink-0"
                 >
-                  <CardBody>
-                    <ul className="space-y-1 list-disc list-inside">
-                      {answer.split(", ").map((text, i) => (
-                        <li key={i} className="text-sm">
-                          {text}
-                        </li>
-                      ))}
-                    </ul>
-                  </CardBody>
-                </Card>
-              );
-            })}
-          </div>
-          {/* Skip button after wrong answer */}
-          {answerState === "wrong" && (
-            <div className="flex justify-center mt-4">
-              <Button onClick={nextWord}>Next →</Button>
-            </div>
-          )}
-        </>
-      )}
+                  {busy === "join" ? "..." : "Join"}
+                </Button>
+              </div>
+            </CardBody>
+          </Card>
 
-      {/* Controls */}
-      <div className="space-y-3 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-        <div className="flex flex-wrap gap-3">
-          <div className="w-72">
-            <Select
-              value={list}
-              onChange={(val) => setList(val as typeof list)}
-              options={LIST_OPTIONS}
-            />
-          </div>
+          <Card className="border-2 border-purple-500/40">
+            <CardBody className="p-5 flex flex-col h-full">
+              <div>
+                <h2 className="text-2xl font-black text-purple-400">VS BOT</h2>
+                <p className="text-xs text-gray-400 mt-1">
+                  Fight the WORD BOSS solo. Works fully offline, no account
+                  needed.
+                </p>
+              </div>
+
+              <div className="flex-1 flex items-center justify-center py-8">
+                <span className="text-5xl font-black text-gray-700 dark:text-gray-700 select-none tracking-widest">
+                  HP 300
+                </span>
+              </div>
+
+              <Link href="/solo" className="mt-auto">
+                <Button className="w-full lg:text-lg lg:py-3 bg-purple-500 border-purple-600 hover:bg-purple-600">
+                  Play
+                </Button>
+              </Link>
+            </CardBody>
+          </Card>
         </div>
-        <div className="flex items-center justify-between">
-          <SwitchMode />
-          <Button onClick={resetDatabase} className="lg:text-lg lg:py-3">
-            Reset
-          </Button>
-        </div>
+
+        {error && (
+          <p className="text-sm text-red-400 text-center mt-4 max-w-screen-sm m-auto">
+            {error}
+          </p>
+        )}
       </div>
     </div>
   );
