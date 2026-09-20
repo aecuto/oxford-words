@@ -37,7 +37,7 @@ export default function SoloPage() {
         myMaxHp={MAX_HP}
         oppMaxHp={SOLO_BOSS.hp}
         allowTimeoutSubmit={false}
-        onAnswer={(answer) => submit(answer)}
+        onAnswer={submit}
         onPlayWord={() => playWordAudio(view.word?.pronounce)}
         onExit={() => router.push("/")}
         onRematch={reset}

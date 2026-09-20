@@ -7,6 +7,7 @@ export const WORDS_PER_BATTLE = 20;
 export const MAX_WORDS_PER_ROOM = 30;
 
 export const WORD_SOUND_DELAY_MS = 300;
+export const POPUP_LIFETIME_MS = 1_100;
 
 export const DAMAGE = {
   high: 40,

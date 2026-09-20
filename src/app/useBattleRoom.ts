@@ -13,6 +13,7 @@ import {
   submitAnswer,
 } from "../game/roomService";
 import type {
+  AnswerState,
   ClientRoom,
   Hit,
   LastAnswer,
@@ -22,6 +23,7 @@ import type {
 import { TURN_GRACE_MS, TURN_MS, WORDS_PER_BATTLE } from "../lib/gameConfig";
 import { describeAuthError, ensureAnonAuth } from "../lib/firebase";
 import { useCountdown } from "./useCountdown";
+import { useDamagePopups } from "./useDamagePopups";
 import { recordResult } from "../game/progressService";
 import { mergeWordLists, loadWordPool, pickBattleWords } from "../game/wordPool";
 import { loadWordStats } from "../game/wordProgress";
@@ -44,7 +46,7 @@ export type BattleView = {
   wordTotal: number;
   wordResults?: (boolean | null)[];
   selected: string | null;
-  answerState: "idle" | "correct" | "wrong" | "timeout";
+  answerState: AnswerState;
   feedback: Feedback | null;
   waitingOpp: boolean;
   remainingMs: number;
@@ -56,8 +58,8 @@ export function useBattleRoom(code: string, name: string) {
   const [room, setRoom] = useState<ClientRoom | null>(null);
   const [uid, setUid] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [popups, setPopups] = useState<Popup[]>([]);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const { popups, spawnPopup } = useDamagePopups();
 
   const uidRef = useRef<string | null>(null);
   const roomRef = useRef<ClientRoom | null>(null);
@@ -86,14 +88,6 @@ export function useBattleRoom(code: string, name: string) {
     fn()
       .catch((e) => console.error(`battle:${key}`, e))
       .finally(() => actingRef.current.delete(key));
-  }, []);
-
-  const spawnPopup = useCallback((side: Popup["side"], damage: number, crit: boolean) => {
-    const popup: Popup = { id: Date.now() + Math.random(), side, damage, crit };
-    setPopups((prev) => [...prev.slice(-4), popup]);
-    setTimeout(() => {
-      setPopups((prev) => prev.filter((p) => p.id !== popup.id));
-    }, 1100);
   }, []);
 
   const damagePopupsFrom = useCallback(

@@ -11,7 +11,7 @@ import {
   type WordResult,
   type WordStats,
 } from "../game/wordProgress";
-import type { BattleWord, Popup } from "../game/types";
+import type { AnswerState, BattleWord } from "../game/types";
 import {
   MAX_HP,
   SOLO_BOSS,
@@ -19,6 +19,7 @@ import {
   WORDS_PER_BATTLE,
 } from "../lib/gameConfig";
 import { useCountdown } from "./useCountdown";
+import { useDamagePopups } from "./useDamagePopups";
 import type { BattleOutcome } from "./useBattleRoom";
 
 export function useSoloBattle() {
@@ -31,38 +32,25 @@ export function useSoloBattle() {
   const [streak, setStreak] = useState(0);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [answerState, setAnswerState] = useState<
-    "idle" | "correct" | "wrong" | "timeout"
-  >("idle");
+  const [answerState, setAnswerState] = useState<AnswerState>("idle");
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-  const [popups, setPopups] = useState<Popup[]>([]);
   const [outcome, setOutcome] = useState<BattleOutcome>(null);
 
-  const lockRef = useRef(false);
   const timersRef = useRef<number[]>([]);
-  const submittedAtRef = useRef(-1);
   const recordedRef = useRef(false);
   const poolRef = useRef<Awaited<ReturnType<typeof loadWordPool>>>([]);
   const statsRef = useRef<WordStats>({});
   const resultsRef = useRef<WordResult[]>([]);
 
+  const { popups, spawnPopup, clearPopups } = useDamagePopups();
   const remainingMs = useCountdown(startedAt, TURN_MS);
-
-  const spawnPopup = useCallback((side: Popup["side"], damage: number, crit: boolean) => {
-    const popup: Popup = { id: Date.now() + Math.random(), side, damage, crit };
-    setPopups((prev) => [...prev.slice(-4), popup]);
-    window.setTimeout(() => {
-      setPopups((prev) => prev.filter((p) => p.id !== popup.id));
-    }, 1100);
-  }, []);
 
   const reset = useCallback(() => {
     timersRef.current.forEach((t) => window.clearTimeout(t));
     timersRef.current = [];
-    lockRef.current = false;
-    submittedAtRef.current = -1;
     recordedRef.current = false;
     resultsRef.current = [];
+    clearPopups();
     setWordIndex(0);
     setBossHp(SOLO_BOSS.hp);
     setMyHp(MAX_HP);
@@ -70,7 +58,6 @@ export function useSoloBattle() {
     setSelected(null);
     setAnswerState("idle");
     setFeedback(null);
-    setPopups([]);
     setOutcome(null);
     if (poolRef.current.length) {
       const picked = pickBattleWords(
@@ -81,8 +68,8 @@ export function useSoloBattle() {
       setWords(picked);
       setWordResults(new Array(picked.length).fill(null));
     }
-    setStartedAt(Date.now());
-  }, []);
+      setStartedAt(Date.now());
+  }, [clearPopups]);
 
   useEffect(() => {
     let alive = true;
@@ -144,9 +131,7 @@ export function useSoloBattle() {
       setStreak(nextStreak);
       setFeedback(feedbackFor(result, crit));
 
-      lockRef.current = true;
       const t = window.setTimeout(() => {
-        lockRef.current = false;
         if (nextBoss <= 0) {
           setOutcome("win");
           return;
@@ -174,7 +159,7 @@ export function useSoloBattle() {
 
   const submit = useCallback(
     (answer: string | null) => {
-      if (lockRef.current || answerState !== "idle" || outcome) return;
+      if (answerState !== "idle" || outcome) return;
       const current = words[wordIndex];
       if (!current) return;
 
@@ -185,7 +170,6 @@ export function useSoloBattle() {
       const correct = !timeout && answer === current.correctAnswer;
 
       setSelected(answer ?? "");
-      submittedAtRef.current = wordIndex;
 
       if (correct) {
         const res = computeHit(elapsed, streak);
@@ -202,7 +186,7 @@ export function useSoloBattle() {
 
   useEffect(() => {
     if (remainingMs > 0 || outcome || !startedAt) return;
-    if (submittedAtRef.current === wordIndex) return;
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot: auto-submit when the turn timer expires */
     submit(null);
   }, [remainingMs, outcome, startedAt, wordIndex, submit]);
 

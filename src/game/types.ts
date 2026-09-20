@@ -40,6 +40,8 @@ export type LastAnswer = {
   at: number;
 };
 
+export type AnswerState = "idle" | "correct" | "wrong" | "timeout";
+
 export type PlayerSlot = {
   uid: string;
   name: string;

@@ -1,13 +1,13 @@
 "use client";
 
 import { cx } from "@emotion/css";
-import type { BattleWord } from "../../../game/types";
+import type { AnswerState, BattleWord } from "../../../game/types";
 import { Card, CardBody } from "../ui/Card";
 
 type AnswerGridProps = {
   word: BattleWord;
   selected: string | null;
-  answerState: "idle" | "correct" | "wrong" | "timeout";
+  answerState: AnswerState;
   disabled: boolean;
   onSelect: (answer: string) => void;
 };

@@ -6,13 +6,12 @@ import Link from "next/link";
 import { Card, CardBody } from "./components/ui/Card";
 import { Button } from "./components/ui/Button";
 import { ProgressPanel } from "./components/ProgressPanel";
+import { useStoredName } from "./useStoredName";
 import { pickBattleWords, loadWordPool } from "../game/wordPool";
 import { loadWordStats } from "../game/wordProgress";
 import { createRoom } from "../game/roomService";
 import { WORDS_PER_BATTLE } from "../lib/gameConfig";
 import { describeAuthError, ensureAnonAuth } from "../lib/firebase";
-
-const NAME_KEY = "battle:name";
 
 const emptySubscribe = () => () => {};
 
@@ -23,13 +22,7 @@ export default function BattleHub() {
     () => true,
     () => false
   );
-  const [nameOverride, setNameOverride] = useState<string | null>(null);
-  const storedName = useSyncExternalStore(
-    emptySubscribe,
-    () => localStorage.getItem(NAME_KEY) ?? "",
-    () => ""
-  );
-  const name = nameOverride ?? storedName;
+  const { name, saveName } = useStoredName();
   const [joinCode, setJoinCode] = useState("");
   const [busy, setBusy] = useState<"create" | "join" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -43,11 +36,6 @@ export default function BattleHub() {
       </div>
     );
   }
-
-  const saveName = (value: string) => {
-    setNameOverride(value);
-    localStorage.setItem(NAME_KEY, value);
-  };
 
   const create = async () => {
     setError(null);
@@ -139,7 +127,8 @@ export default function BattleHub() {
                 <Button
                   onClick={join}
                   disabled={busy !== null}
-                  className="bg-blue-500 border-blue-600 hover:bg-blue-600 shrink-0"
+                  variant="blue"
+                  className="shrink-0"
                 >
                   {busy === "join" ? "..." : "Join"}
                 </Button>
@@ -165,7 +154,7 @@ export default function BattleHub() {
               </div>
 
               <Link href="/solo" className="mt-auto">
-                <Button className="w-full lg:text-lg lg:py-3 bg-purple-500 border-purple-600 hover:bg-purple-600">
+                <Button variant="purple" className="w-full lg:text-lg lg:py-3">
                   Play
                 </Button>
               </Link>

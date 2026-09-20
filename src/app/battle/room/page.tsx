@@ -1,28 +1,22 @@
 "use client";
 
-import { Suspense, useState, useSyncExternalStore } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { cx } from "@emotion/css";
 import { useBattleRoom } from "../../useBattleRoom";
+import { useStoredName } from "../../useStoredName";
 import { BattleScreen } from "../../components/battle/BattleScreen";
 import { Card, CardBody } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
+import { MAX_HP } from "../../../lib/gameConfig";
 import { describeAuthError } from "../../../lib/firebase";
 import { playWordAudio } from "../../playWordAudio";
-
-const NAME_KEY = "battle:name";
-
-const emptySubscribe = () => () => {};
 
 function RoomPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const code = (searchParams.get("id") ?? "").toUpperCase();
-  const name = useSyncExternalStore(
-    emptySubscribe,
-    () => localStorage.getItem(NAME_KEY) ?? "",
-    () => ""
-  );
+  const { name } = useStoredName();
 
   const { phase, error, view, submit } = useBattleRoom(code, name);
 
@@ -85,16 +79,10 @@ function RoomPage() {
               <Button onClick={copyLink}>
                 {copied ? "Link copied!" : "Copy invite link"}
               </Button>
-              <Button
-                onClick={() => router.push("/solo")}
-                className="bg-purple-500 border-purple-600 hover:bg-purple-600"
-              >
+              <Button onClick={() => router.push("/solo")} variant="purple">
                 Play solo while waiting
               </Button>
-              <Button
-                onClick={() => router.push("/")}
-                className="bg-gray-500 border-gray-600 hover:bg-gray-600"
-              >
+              <Button onClick={() => router.push("/")} variant="gray">
                 Leave room
               </Button>
             </div>
@@ -108,10 +96,10 @@ function RoomPage() {
     <div className="dark min-h-dvh pt-safe pb-safe">
       <BattleScreen
         view={view}
-        myMaxHp={100}
-        oppMaxHp={100}
+        myMaxHp={MAX_HP}
+        oppMaxHp={MAX_HP}
         allowTimeoutSubmit
-        onAnswer={(answer) => submit(answer)}
+        onAnswer={submit}
         onPlayWord={() => playWordAudio(view.word?.pronounce)}
         onExit={() => router.push("/")}
       />

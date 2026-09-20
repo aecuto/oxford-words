@@ -78,7 +78,7 @@ export function BattleScreen({
     <div
       className={cx(
         "relative max-w-screen-md m-auto w-full px-2.5 sm:p-3 select-none",
-        shake && "animate-shake"
+        shake && "animate-shake",
       )}
     >
       <FlashOverlay active={flash} />
@@ -169,7 +169,7 @@ export function BattleScreen({
                 ? view.feedback.crit
                   ? "text-orange-400"
                   : "text-emerald-500"
-                : "text-red-500"
+                : "text-red-500",
             )}
           >
             {view.feedback.text}
@@ -197,7 +197,8 @@ export function BattleScreen({
         <div className="flex justify-center mt-3">
           <Button
             onClick={() => onAnswer(null)}
-            className="text-sm px-4 py-2 bg-gray-500 border-gray-600 hover:bg-gray-600"
+            variant="gray"
+            className="text-sm px-4 py-2"
           >
             Give up this word
           </Button>
@@ -209,20 +210,17 @@ export function BattleScreen({
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 rounded-xl p-4">
           <Card className="w-full max-w-xs animate-popIn">
             <CardBody className="text-center space-y-3 p-5 sm:p-6">
-              <h2 className={cx("text-2xl sm:text-3xl font-black", result.color)}>
+              <h2
+                className={cx("text-2xl sm:text-3xl font-black", result.color)}
+              >
                 {result.title}
               </h2>
               <p className="text-sm text-gray-400 break-words">
                 {view.myName} {view.myHp} — {view.oppHp} {view.oppName}
               </p>
               <div className="flex flex-col gap-2 pt-2">
-                {onRematch && (
-                  <Button onClick={onRematch}>Play again</Button>
-                )}
-                <Button
-                  onClick={onExit}
-                  className="bg-gray-500 border-gray-600 hover:bg-gray-600"
-                >
+                {onRematch && <Button onClick={onRematch}>Play again</Button>}
+                <Button onClick={onExit} variant="gray">
                   Back to lobby
                 </Button>
               </div>
