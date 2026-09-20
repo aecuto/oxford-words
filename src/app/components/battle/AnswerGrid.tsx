@@ -22,7 +22,7 @@ export function AnswerGrid({
   onSelect,
 }: AnswerGridProps) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3 select-none touch-manipulation">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 select-none touch-manipulation">
       {word.options.map((option, idx) => {
         const isSelected = selected === option;
         const isCorrect = isSelected && answerState === "correct";

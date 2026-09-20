@@ -150,7 +150,6 @@ function RoomPage() {
         view={view}
         myMaxHp={MAX_HP}
         oppMaxHp={MAX_HP}
-        allowTimeoutSubmit
         onAnswer={submit}
         onPlayWord={() => playWordAudio(view.word?.pronounce)}
         onExit={() => router.push("/")}

@@ -35,7 +35,7 @@ export function buildAnswers(current: Word, pool: Word[]): string[] {
     .filter((w) => w.word !== current.word)
     .map(getCorrectAnswer)
     .filter((a) => a && a !== correct);
-  const picked = uniq(sampleSize(distractors, 2));
+  const picked = uniq(sampleSize(distractors, 3));
   return shuffle([correct, ...picked]);
 }
 

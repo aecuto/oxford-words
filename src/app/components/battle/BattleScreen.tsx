@@ -21,14 +21,11 @@ type BattleScreenProps = {
   view: BattleView;
   myMaxHp: number;
   oppMaxHp: number;
-  allowTimeoutSubmit: boolean;
   onAnswer: (answer: string | null) => void;
   onPlayWord: () => void;
   onExit: () => void;
   onRematch?: () => void;
 };
-
-type WordEntry = NonNullable<BattleView["word"]>;
 
 const RESULT_TEXT = {
   win: { title: "VICTORY", color: "text-emerald-500" },
@@ -40,7 +37,6 @@ export function BattleScreen({
   view,
   myMaxHp,
   oppMaxHp,
-  allowTimeoutSubmit,
   onAnswer,
   onPlayWord,
   onExit,
@@ -51,17 +47,12 @@ export function BattleScreen({
   const result = view.outcome ? RESULT_TEXT[view.outcome] : null;
   const critCharged = isCritReady(view.myStreak);
 
-  const [playedWord, setPlayedWord] = useState<WordEntry | null>(null);
-  const [seenWord, setSeenWord] = useState<WordEntry | null>(view.word);
-  if (view.word !== seenWord) {
-    setSeenWord(view.word);
-    setPlayedWord(null);
-  }
-  const soundUnlocked = view.word != null && playedWord === view.word;
+  const [playedWordNumber, setPlayedWordNumber] = useState<number | null>(null);
+  const soundUnlocked = playedWordNumber === view.wordNumber;
 
   const handlePlayWord = () => {
     onPlayWord();
-    if (view.word && playedWord !== view.word) setPlayedWord(view.word);
+    setPlayedWordNumber(view.wordNumber);
   };
 
   const seenPopups = useRef<Set<number>>(new Set());
@@ -135,8 +126,9 @@ export function BattleScreen({
       </div>
 
       {/* Waiting indicator */}
-      <div className="mb-2 flex items-center justify-center h-7">
+      <div className="mb-2 flex flex-wrap items-center justify-center gap-2 min-h-7">
         {view.waitingOpp && (
+            <>
             <span className="inline-flex items-center gap-2 animate-popIn text-xs sm:text-sm font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-full px-3 py-1">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75 animate-ping" />
@@ -153,6 +145,19 @@ export function BattleScreen({
                 ))}
               </span>
             </span>
+            {view.word && (
+              <span
+                className={cx(
+                  "inline-flex items-center gap-1.5 animate-popIn text-xs sm:text-sm font-semibold",
+                  "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40",
+                  "rounded-full px-3 py-1 border border-emerald-200 dark:border-emerald-800"
+                )}
+              >
+                Answer:
+                <span className="font-bold">{view.word.correctAnswer}</span>
+              </span>
+            )}
+            </>
           )}
       </div>
 
@@ -178,18 +183,6 @@ export function BattleScreen({
             }}
           />
         )
-      )}
-
-      {allowTimeoutSubmit && !ended && view.answerState === "idle" && (
-        <div className="flex justify-center mt-3">
-          <Button
-            onClick={() => onAnswer(null)}
-            variant="gray"
-            className="text-sm px-4 py-2"
-          >
-            Give up this word
-          </Button>
-        </div>
       )}
 
       {/* HP bars — bottom; damage popups drop into the reserved space below */}
