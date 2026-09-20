@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { cx } from "@emotion/css";
 import type { BattleView } from "../../useBattleRoom";
 import { isCritReady } from "../../../game/damage";
-import { TURN_MS, WORD_SOUND_DELAY_MS } from "../../../lib/gameConfig";
+import { TURN_MS } from "../../../lib/gameConfig";
 import { playSfx } from "../../../lib/sfx";
 import { Card, CardBody } from "../ui/Card";
 import { Button } from "../ui/Button";
@@ -47,17 +47,6 @@ export function BattleScreen({
   const ended = view.outcome !== null;
   const result = view.outcome ? RESULT_TEXT[view.outcome] : null;
   const critCharged = isCritReady(view.myStreak);
-
-  const playRef = useRef(onPlayWord);
-  useEffect(() => {
-    playRef.current = onPlayWord;
-  });
-  const wordText = view.word?.word;
-  useEffect(() => {
-    if (!wordText) return;
-    const t = window.setTimeout(() => playRef.current(), WORD_SOUND_DELAY_MS);
-    return () => window.clearTimeout(t);
-  }, [wordText]);
 
   const seenPopups = useRef<Set<number>>(new Set());
   useEffect(() => {
@@ -212,7 +201,10 @@ export function BattleScreen({
           answerState={view.answerState}
           disabled={ended || view.answerState !== "idle"}
           crit={critCharged && !ended && view.answerState === "idle"}
-          onSelect={(answer) => onAnswer(answer)}
+          onSelect={(answer) => {
+            if (view.word && answer === view.word.correctAnswer) onPlayWord();
+            onAnswer(answer);
+          }}
         />
       )}
 
