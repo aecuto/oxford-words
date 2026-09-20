@@ -1,4 +1,4 @@
-[https://aecuto.github.io/oxford-words](https://aecuto.github.io/oxford-words)
+Deployed on Vercel. Import the repo at [vercel.com/new](https://vercel.com/new) — Next.js is auto-detected, no extra config needed.
 
 ## Dev
 ```bash
