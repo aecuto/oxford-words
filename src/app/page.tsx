@@ -10,7 +10,7 @@ import { useStoredName } from "./useStoredName";
 import { pickBattleWords, loadWordPool } from "../game/wordPool";
 import { loadWordStats } from "../game/wordProgress";
 import { createRoom } from "../game/roomService";
-import { WORDS_PER_BATTLE } from "../lib/gameConfig";
+import { SOLO_BOT, WORDS_PER_BATTLE } from "../lib/gameConfig";
 import { describeAuthError, ensureAnonAuth } from "../lib/firebase";
 
 const emptySubscribe = () => () => {};
@@ -144,7 +144,7 @@ export default function BattleHub() {
 
               <div className="flex-1 flex items-center justify-center py-4 sm:py-8">
                 <span className="text-3xl sm:text-5xl font-black text-gray-700 dark:text-gray-700 select-none tracking-widest">
-                  HP 300
+                  HP {SOLO_BOT.hp}
                 </span>
               </div>
 

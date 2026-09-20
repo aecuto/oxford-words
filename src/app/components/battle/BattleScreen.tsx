@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { cx } from "@emotion/css";
-import { SpeakerWaveIcon } from "@heroicons/react/24/solid";
+import { SpeakerWaveIcon, FlagIcon } from "@heroicons/react/24/solid";
 import type { BattleView } from "../../useBattleRoom";
 import { isCritReady } from "../../../game/damage";
 import { TURN_MS } from "../../../lib/gameConfig";
@@ -47,6 +47,19 @@ export function BattleScreen({
   const result = view.outcome ? RESULT_TEXT[view.outcome] : null;
   const critCharged = isCritReady(view.myStreak);
 
+  const [resultShown, setResultShown] = useState(false);
+  const [prevOutcome, setPrevOutcome] = useState(view.outcome);
+  if (prevOutcome !== view.outcome) {
+    setPrevOutcome(view.outcome);
+    setResultShown(false);
+  }
+
+  const showResult = () => {
+    if (!view.outcome || resultShown) return;
+    setResultShown(true);
+    playSfx(view.outcome);
+  };
+
   const [playedWordNumber, setPlayedWordNumber] = useState<number | null>(null);
   const soundUnlocked = playedWordNumber === view.wordNumber;
 
@@ -64,13 +77,6 @@ export function BattleScreen({
       else playSfx("hurt");
     }
   }, [view.popups]);
-
-  const outcome = view.outcome;
-  useEffect(() => {
-    if (!outcome) return;
-    const t = window.setTimeout(() => playSfx(outcome), 600);
-    return () => window.clearTimeout(t);
-  }, [outcome]);
 
   return (
     <div
@@ -219,8 +225,21 @@ export function BattleScreen({
         </div>
       </div>
 
+      {/* View result tab */}
+      {ended && !resultShown && (
+        <div className="absolute inset-x-0 bottom-2 z-40 flex justify-center px-4">
+          <button
+            onClick={showResult}
+            className="animate-popIn inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-3 text-sm sm:text-base font-black text-white shadow-lg shadow-indigo-600/30 hover:bg-indigo-500 active:scale-95 transition-all touch-manipulation select-none"
+          >
+            <FlagIcon className="w-5 h-5" />
+            View result
+          </button>
+        </div>
+      )}
+
       {/* Result overlay */}
-      {ended && result && (
+      {resultShown && result && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 rounded-xl p-4">
           <Card className="w-full max-w-xs animate-popIn">
             <CardBody className="text-center space-y-3 p-5 sm:p-6">
