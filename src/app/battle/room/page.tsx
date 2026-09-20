@@ -16,9 +16,10 @@ function RoomPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const code = (searchParams.get("id") ?? "").toUpperCase();
-  const { name } = useStoredName();
+  const { name, saveName } = useStoredName();
 
-  const { phase, error, view, submit } = useBattleRoom(code, name);
+  const { phase, error, view, submit, rename, join, joining } =
+    useBattleRoom(code);
 
   const [copied, setCopied] = useState(false);
   const shareLink =
@@ -54,6 +55,38 @@ function RoomPage() {
     );
   }
 
+  if (phase === "join") {
+    return (
+      <Center>
+        <Card className="w-full max-w-sm animate-popIn">
+          <CardBody className="text-center space-y-3 p-5 sm:p-6">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Joining room
+            </p>
+            <p className="text-4xl sm:text-5xl font-black font-mono tracking-[0.2em] sm:tracking-[0.3em]">
+              {code}
+            </p>
+            <input
+              value={name}
+              maxLength={16}
+              placeholder="Player 2"
+              onChange={(e) => saveName(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-600 text-base text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="flex flex-col gap-2 pt-1">
+              <Button onClick={() => join(name)} disabled={joining}>
+                {joining ? "Joining..." : "Join"}
+              </Button>
+              <Button onClick={() => router.push("/")} variant="gray">
+                Cancel
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
+      </Center>
+    );
+  }
+
   if (phase === "loading" || !view) {
     return (
       <Center>
@@ -75,6 +108,25 @@ function RoomPage() {
               {code}
             </p>
             <p className="text-xs text-gray-400 break-all">{shareLink}</p>
+            <div className="pt-1 text-left">
+              <label
+                htmlFor="room-name"
+                className="text-xs font-bold text-gray-400 uppercase tracking-wide"
+              >
+                Your name
+              </label>
+              <input
+                id="room-name"
+                value={name}
+                maxLength={16}
+                placeholder="Your name"
+                onChange={(e) => {
+                  saveName(e.target.value);
+                  rename(e.target.value);
+                }}
+                className="mt-1 w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-600 text-base text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
             <div className="flex flex-col gap-2 pt-1">
               <Button onClick={copyLink}>
                 {copied ? "Link copied!" : "Copy invite link"}

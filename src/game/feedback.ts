@@ -36,18 +36,20 @@ export type Feedback = {
   text: string;
   tone: "good" | "bad";
   crit: boolean;
+  damage: number;
 };
 
 export function feedbackFor(
   result: "correct" | "wrong" | "timeout",
-  crit: boolean
+  crit: boolean,
+  damage = 0
 ): Feedback {
   if (result === "correct") {
     return crit
-      ? { text: sample(CRIT_FEEDBACK)!, tone: "good", crit: true }
-      : { text: sample(CORRECT_FEEDBACK)!, tone: "good", crit: false };
+      ? { text: sample(CRIT_FEEDBACK)!, tone: "good", crit: true, damage }
+      : { text: sample(CORRECT_FEEDBACK)!, tone: "good", crit: false, damage };
   }
   return result === "timeout"
-    ? { text: sample(TIMEOUT_FEEDBACK)!, tone: "bad", crit: false }
-    : { text: sample(WRONG_FEEDBACK)!, tone: "bad", crit: false };
+    ? { text: sample(TIMEOUT_FEEDBACK)!, tone: "bad", crit: false, damage }
+    : { text: sample(WRONG_FEEDBACK)!, tone: "bad", crit: false, damage };
 }

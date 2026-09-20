@@ -51,14 +51,6 @@ export function HpBar({ name, hp, max, streak, flip = false }: HpBarProps) {
         >
           x{streak}
         </span>
-        <span
-          className={cx(
-            "text-xs font-mono text-gray-500 dark:text-gray-400",
-            flip ? "mr-auto" : "ml-auto"
-          )}
-        >
-          {hp}/{max}
-        </span>
       </div>
       <div
         className={cx(

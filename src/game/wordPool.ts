@@ -3,7 +3,7 @@ import wordsJson from "../../translator/words.th.json";
 import type { Word } from "./types";
 import { WORDS_PER_BATTLE } from "../lib/gameConfig";
 import type { BattleWord } from "./types";
-import type { WordStat, WordStats } from "./wordProgress";
+import { isDue, type WordStats } from "./wordProgress";
 
 const typeMap: Record<string, string> = {
   noun: "N",
@@ -73,22 +73,14 @@ export function mergeWordLists(
   return merged;
 }
 
-// Lower tier = picked sooner.
-// 0 needs review (more wrong than correct), 1 unseen (new material),
-// 2 answered correctly at least once (reduced to last resort).
-function tierOf(stat: WordStat | undefined): number {
-  if (!stat || stat.seen === 0) return 1;
-  if (stat.wrong > stat.correct) return 0;
-  return 2;
-}
-
+// Pick order: due words first (wrong answers are due immediately, correct
+// answers resurface after twice the previous interval), then new words, then
+// words not due yet. Within new words, half the slots are verb-first so
+// drilling stays varied without becoming monotonous.
 function isVerbType(type: string): boolean {
   return type.toLowerCase().includes("verb");
 }
 
-// Share of new-material slots reserved for verbs. Verbs are the highest-value
-// Oxford words to drill, but 100% verbs gets monotonous (~60 battles of verbs
-// before any noun), so only half of the new slots are verb-first.
 const NEW_VERB_RATIO = 0.5;
 
 export function pickBattleWords(
@@ -96,15 +88,23 @@ export function pickBattleWords(
   count: number = WORDS_PER_BATTLE,
   stats: WordStats = {}
 ): BattleWord[] {
-  const tiers: Word[][] = [[], [], []];
-  for (const w of pool) tiers[tierOf(stats[w.word])].push(w);
+  const now = Date.now();
+  const due: Word[] = [];
+  const fresh: Word[] = [];
+  const scheduled: Word[] = [];
+  for (const w of pool) {
+    const s = stats[w.word];
+    if (!s || s.seen === 0) fresh.push(w);
+    else if (isDue(s, now)) due.push(w);
+    else scheduled.push(w);
+  }
+  shuffle(due);
+  shuffle(fresh);
+  shuffle(scheduled);
 
-  const review = shuffle(tiers[0]);
-  const learned = shuffle(tiers[2]);
-
-  const verbs = shuffle(tiers[1].filter((w) => isVerbType(w.type)));
-  const others = shuffle(tiers[1].filter((w) => !isVerbType(w.type)));
-  const need = Math.max(0, count - review.length);
+  const need = Math.max(0, count - due.length);
+  const verbs = fresh.filter((w) => isVerbType(w.type));
+  const others = fresh.filter((w) => !isVerbType(w.type));
   const verbQuota = Math.min(verbs.length, Math.ceil(need * NEW_VERB_RATIO));
   const newHead = shuffle([
     ...verbs.splice(0, verbQuota),
@@ -112,7 +112,7 @@ export function pickBattleWords(
   ]);
   const newTail = shuffle([...verbs, ...others]);
 
-  const picked = [...review, ...newHead, ...newTail, ...learned].slice(
+  const picked = [...due, ...newHead, ...newTail, ...scheduled].slice(
     0,
     count
   );

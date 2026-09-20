@@ -1,9 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { FireIcon } from "@heroicons/react/24/solid";
 import { Card, CardBody } from "./ui/Card";
 import { loadWordPool } from "../../game/wordPool";
-import { loadWordStats, type WordStats } from "../../game/wordProgress";
+import {
+  loadDailyProgress,
+  loadWordStats,
+  type DailyProgress,
+  type WordStats,
+} from "../../game/wordProgress";
+import { DAILY_GOAL_CORRECT } from "../../lib/gameConfig";
 import { fetchProgress, type Progress } from "../../game/progressService";
 import { ensureAnonAuth } from "../../lib/firebase";
 
@@ -35,6 +42,7 @@ export function ProgressPanel() {
   const [poolTotal, setPoolTotal] = useState(0);
   const [stats, setStats] = useState<WordStats>({});
   const [record, setRecord] = useState<Progress | null>(null);
+  const [daily, setDaily] = useState<DailyProgress | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -43,6 +51,7 @@ export function ProgressPanel() {
         if (!alive) return;
         setPoolTotal(pool.length);
         setStats(loadWordStats());
+        setDaily(loadDailyProgress());
       })
       .catch((e) => console.error("progress:pool", e));
     (async () => {
@@ -96,6 +105,31 @@ export function ProgressPanel() {
             value={`${seen}/${poolTotal}`}
             tone="text-gray-300"
           />
+        </div>
+
+        <div className="mt-4 pt-3 border-t border-gray-800">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-black uppercase tracking-wider text-gray-500">
+              Today
+            </span>
+            <span className="text-xs text-gray-400 tabular-nums">
+              {daily?.correct ?? 0} / {DAILY_GOAL_CORRECT} correct
+            </span>
+          </div>
+          <div className="h-2 rounded-full bg-gray-800 overflow-hidden">
+            <div
+              className="h-full bg-amber-500 transition-all"
+              style={{
+                width: pct(daily?.correct ?? 0, DAILY_GOAL_CORRECT),
+              }}
+            />
+          </div>
+          {(daily?.streak ?? 0) > 0 && (
+            <div className="mt-1.5 flex items-center gap-1 text-xs font-bold text-amber-400">
+              <FireIcon className="h-3.5 w-3.5" />
+              {daily!.streak}-day streak
+            </div>
+          )}
         </div>
 
         {showRecord && (

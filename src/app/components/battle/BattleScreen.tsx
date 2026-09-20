@@ -173,6 +173,9 @@ export function BattleScreen({
             )}
           >
             {view.feedback.text}
+            {view.feedback.damage > 0 && (
+              <span className="ml-1 tabular-nums">−{view.feedback.damage}</span>
+            )}
           </span>
         )}
         {view.waitingOpp && (
@@ -206,28 +209,25 @@ export function BattleScreen({
       )}
 
       {/* Result overlay */}
-      {ended && result && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 rounded-xl p-4">
-          <Card className="w-full max-w-xs animate-popIn">
-            <CardBody className="text-center space-y-3 p-5 sm:p-6">
-              <h2
-                className={cx("text-2xl sm:text-3xl font-black", result.color)}
-              >
-                {result.title}
-              </h2>
-              <p className="text-sm text-gray-400 break-words">
-                {view.myName} {view.myHp} — {view.oppHp} {view.oppName}
-              </p>
-              <div className="flex flex-col gap-2 pt-2">
-                {onRematch && <Button onClick={onRematch}>Play again</Button>}
-                <Button onClick={onExit} variant="gray">
-                  Back to lobby
-                </Button>
-              </div>
-            </CardBody>
-          </Card>
-        </div>
-      )}
+  {ended && result && (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 rounded-xl p-4">
+      <Card className="w-full max-w-xs animate-popIn">
+        <CardBody className="text-center space-y-3 p-5 sm:p-6">
+          <h2
+            className={cx("text-2xl sm:text-3xl font-black", result.color)}
+          >
+            {result.title}
+          </h2>
+          <div className="flex flex-col gap-2 pt-2">
+            {onRematch && <Button onClick={onRematch}>Play again</Button>}
+            <Button onClick={onExit} variant="gray">
+              Back to lobby
+            </Button>
+          </div>
+        </CardBody>
+      </Card>
+    </div>
+  )}
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { useSoloBattle } from "../useSoloBattle";
 import { BattleScreen } from "../components/battle/BattleScreen";
 import { Button } from "../components/ui/Button";
 import { playWordAudio } from "../playWordAudio";
-import { SOLO_BOSS, MAX_HP } from "../../lib/gameConfig";
+import { SOLO_BOT, MAX_HP } from "../../lib/gameConfig";
 
 export default function SoloPage() {
   const router = useRouter();
@@ -35,7 +35,7 @@ export default function SoloPage() {
       <BattleScreen
         view={view}
         myMaxHp={MAX_HP}
-        oppMaxHp={SOLO_BOSS.hp}
+        oppMaxHp={SOLO_BOT.hp}
         allowTimeoutSubmit={false}
         onAnswer={submit}
         onPlayWord={() => playWordAudio(view.word?.pronounce)}

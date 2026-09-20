@@ -14,7 +14,7 @@ import {
 import type { AnswerState, BattleWord } from "../game/types";
 import {
   MAX_HP,
-  SOLO_BOSS,
+  SOLO_BOT,
   TURN_MS,
   WORDS_PER_BATTLE,
 } from "../lib/gameConfig";
@@ -27,7 +27,7 @@ export function useSoloBattle() {
   const [error, setError] = useState<string | null>(null);
   const [wordIndex, setWordIndex] = useState(0);
   const [wordResults, setWordResults] = useState<(boolean | null)[]>([]);
-  const [bossHp, setBossHp] = useState<number>(SOLO_BOSS.hp);
+  const [botHp, setBotHp] = useState<number>(SOLO_BOT.hp);
   const [myHp, setMyHp] = useState(MAX_HP);
   const [streak, setStreak] = useState(0);
   const [startedAt, setStartedAt] = useState<number | null>(null);
@@ -52,7 +52,7 @@ export function useSoloBattle() {
     resultsRef.current = [];
     clearPopups();
     setWordIndex(0);
-    setBossHp(SOLO_BOSS.hp);
+    setBotHp(SOLO_BOT.hp);
     setMyHp(MAX_HP);
     setStreak(0);
     setSelected(null);
@@ -117,22 +117,24 @@ export function useSoloBattle() {
         });
       }
 
-      let nextBoss = bossHp;
+      let nextBot = botHp;
       let nextMy = myHp;
       if (result === "correct") {
-        nextBoss = Math.max(0, bossHp - dealtDamage);
-        setBossHp(nextBoss);
+        nextBot = Math.max(0, botHp - dealtDamage);
+        setBotHp(nextBot);
         spawnPopup("opp", dealtDamage, crit);
       } else {
-        nextMy = Math.max(0, myHp - SOLO_BOSS.hit);
+        nextMy = Math.max(0, myHp - SOLO_BOT.hit);
         setMyHp(nextMy);
-        spawnPopup("me", SOLO_BOSS.hit, false);
+        spawnPopup("me", SOLO_BOT.hit, false);
       }
       setStreak(nextStreak);
-      setFeedback(feedbackFor(result, crit));
+      setFeedback(
+        feedbackFor(result, crit, result === "correct" ? dealtDamage : SOLO_BOT.hit)
+      );
 
       const t = window.setTimeout(() => {
-        if (nextBoss <= 0) {
+        if (nextBot <= 0) {
           setOutcome("win");
           return;
         }
@@ -142,7 +144,7 @@ export function useSoloBattle() {
         }
         if (isLast) {
           setOutcome(
-            nextMy / MAX_HP > nextBoss / SOLO_BOSS.hp ? "win" : "lose"
+            nextMy / MAX_HP > nextBot / SOLO_BOT.hp ? "win" : "lose"
           );
           return;
         }
@@ -154,7 +156,7 @@ export function useSoloBattle() {
       }, 900);
       timersRef.current.push(t);
     },
-    [words, wordIndex, bossHp, myHp, spawnPopup]
+    [words, wordIndex, botHp, myHp, spawnPopup]
   );
 
   const submit = useCallback(
@@ -206,9 +208,9 @@ export function useSoloBattle() {
     const current = words[wordIndex] ?? null;
     return {
       myName: "YOU",
-      oppName: SOLO_BOSS.name,
+      oppName: SOLO_BOT.name,
       myHp,
-      oppHp: bossHp,
+      oppHp: botHp,
       myStreak: streak,
       oppStreak: 0,
       word: current,
@@ -228,7 +230,7 @@ export function useSoloBattle() {
     wordIndex,
     wordResults,
     myHp,
-    bossHp,
+    botHp,
     streak,
     selected,
     answerState,

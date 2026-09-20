@@ -97,6 +97,17 @@ export async function joinRoom(
   });
 }
 
+export async function renamePlayer(
+  code: string,
+  key: SlotKey,
+  name: string
+): Promise<void> {
+  const fallback = key === "p1" ? "Player 1" : "Player 2";
+  await updateDoc(roomRef(code), {
+    [`players.${key}.name`]: name.trim().slice(0, 16) || fallback,
+  });
+}
+
 export async function startGame(code: string, words: BattleWord[]): Promise<void> {
   await updateDoc(roomRef(code), {
     words,

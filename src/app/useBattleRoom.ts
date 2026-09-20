@@ -8,6 +8,7 @@ import {
   endGame,
   getRoom,
   joinRoom,
+  renamePlayer,
   startGame,
   subscribeRoom,
   submitAnswer,
@@ -54,16 +55,18 @@ export type BattleView = {
   outcome: BattleOutcome;
 };
 
-export function useBattleRoom(code: string, name: string) {
+export function useBattleRoom(code: string) {
   const [room, setRoom] = useState<ClientRoom | null>(null);
   const [uid, setUid] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [needsJoin, setNeedsJoin] = useState(false);
+  const [joining, setJoining] = useState(false);
   const { popups, spawnPopup } = useDamagePopups();
 
   const uidRef = useRef<string | null>(null);
   const roomRef = useRef<ClientRoom | null>(null);
-  const nameRef = useRef(name);
+  const unsubRef = useRef<(() => void) | null>(null);
   const hpLensRef = useRef<{ me: number; opp: number } | null>(null);
   const actingRef = useRef<Set<string>>(new Set());
   const submittedWordRef = useRef<number>(-1);
@@ -116,9 +119,39 @@ export function useBattleRoom(code: string, name: string) {
     [spawnPopup]
   );
 
+  const handleSnapshot = useCallback(
+    (myUid: string, r: ClientRoom | null) => {
+      setRoom(r);
+      if (!r) {
+        hpLensRef.current = null;
+        return;
+      }
+      const key: SlotKey | null =
+        r.players.p1?.uid === myUid
+          ? "p1"
+          : r.players.p2?.uid === myUid
+            ? "p2"
+            : null;
+      if (!key) {
+        hpLensRef.current = null;
+        return;
+      }
+      damagePopupsFrom(r, key);
+    },
+    [damagePopupsFrom]
+  );
+
+  const watchRoom = useCallback(
+    (myUid: string) => {
+      unsubRef.current?.();
+      unsubRef.current = subscribeRoom(code, (r) => handleSnapshot(myUid, r));
+    },
+    [code, handleSnapshot]
+  );
+
   useEffect(() => {
     let alive = true;
-    let unsub: (() => void) | null = null;
+    unsubRef.current = null;
 
     (async () => {
       try {
@@ -134,47 +167,17 @@ export function useBattleRoom(code: string, name: string) {
           return;
         }
         if (
-          existing.players.p1?.uid !== myUid &&
-          existing.players.p2?.uid !== myUid
+          existing.players.p1?.uid === myUid ||
+          existing.players.p2?.uid === myUid
         ) {
-          if (existing.players.p2 === null && existing.status === "waiting") {
-            const pool = await loadWordPool();
-            const myWords = pickBattleWords(
-              pool,
-              WORDS_PER_BATTLE,
-              loadWordStats()
-            );
-            await joinRoom(
-              code,
-              myUid,
-              nameRef.current || "Player 2",
-              myWords
-            );
-          } else {
-            setError("This room is full.");
-            return;
-          }
+          watchRoom(myUid);
+          return;
         }
-
-        unsub = subscribeRoom(code, (r) => {
-          if (!alive) return;
-          setRoom(r);
-          if (!r) {
-            hpLensRef.current = null;
-            return;
-          }
-          const key: SlotKey | null =
-            r.players.p1?.uid === myUid
-              ? "p1"
-              : r.players.p2?.uid === myUid
-                ? "p2"
-                : null;
-          if (!key) {
-            hpLensRef.current = null;
-            return;
-          }
-          damagePopupsFrom(r, key);
-        });
+        if (existing.players.p2 !== null || existing.status !== "waiting") {
+          setError("This room is full.");
+          return;
+        }
+        setNeedsJoin(true);
       } catch (e) {
         console.error(e);
         if (alive) {
@@ -185,11 +188,56 @@ export function useBattleRoom(code: string, name: string) {
 
     return () => {
       alive = false;
-      unsub?.();
+      unsubRef.current?.();
+      unsubRef.current = null;
     };
-  }, [code, damagePopupsFrom]);
+  }, [code, watchRoom]);
+
+  const join = useCallback(
+    (joinName: string) => {
+      const myUid = uidRef.current;
+      if (!myUid || joining) return;
+      setJoining(true);
+      void (async () => {
+        try {
+          const pool = await loadWordPool();
+          const myWords = pickBattleWords(
+            pool,
+            WORDS_PER_BATTLE,
+            loadWordStats()
+          );
+          await joinRoom(code, myUid, joinName.trim() || "Player 2", myWords);
+          watchRoom(myUid);
+          setNeedsJoin(false);
+        } catch (e) {
+          console.error("battle:join", e);
+          setError(describeAuthError(e));
+        } finally {
+          setJoining(false);
+        }
+      })();
+    },
+    [code, joining, watchRoom]
+  );
 
   const isHost = room != null && uid != null && room.hostUid === uid;
+
+  const rename = useCallback(
+    (newName: string) => {
+      const r = roomRef.current;
+      const myUid = uidRef.current;
+      if (!r || !myUid) return;
+      const key: SlotKey | null =
+        r.players.p1?.uid === myUid
+          ? "p1"
+          : r.players.p2?.uid === myUid
+            ? "p2"
+            : null;
+      if (!key) return;
+      void acting("rename", () => renamePlayer(r.code, key, newName));
+    },
+    [acting]
+  );
 
   useEffect(() => {
     const r = room;
@@ -324,7 +372,11 @@ export function useBattleRoom(code: string, name: string) {
       resultsRef.current.push({ word: current.word, correct });
 
       setFeedback(
-        feedbackFor(correct ? "correct" : timeout ? "timeout" : "wrong", hit?.crit ?? false)
+        feedbackFor(
+          correct ? "correct" : timeout ? "timeout" : "wrong",
+          hit?.crit ?? false,
+          hit?.damage ?? 0
+        )
       );
 
       await submitAnswer(r.code, key, lastAnswer, hit, streak).catch((e) => {
@@ -411,10 +463,13 @@ export function useBattleRoom(code: string, name: string) {
   }, [view, room, slotKey]);
 
   return {
-    phase: error ? "error" : !view ? "loading" : room!.status,
+    phase: error ? "error" : needsJoin ? "join" : !view ? "loading" : room!.status,
     error,
     view,
     submit,
+    rename,
+    join,
+    joining,
   } as const;
 }
 
