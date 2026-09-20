@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cx } from "@emotion/css";
+import { SpeakerWaveIcon } from "@heroicons/react/24/solid";
 import type { BattleView } from "../../useBattleRoom";
 import { isCritReady } from "../../../game/damage";
 import { TURN_MS } from "../../../lib/gameConfig";
@@ -27,6 +28,8 @@ type BattleScreenProps = {
   onRematch?: () => void;
 };
 
+type WordEntry = NonNullable<BattleView["word"]>;
+
 const RESULT_TEXT = {
   win: { title: "VICTORY", color: "text-emerald-500" },
   lose: { title: "DEFEAT", color: "text-red-500" },
@@ -47,6 +50,19 @@ export function BattleScreen({
   const ended = view.outcome !== null;
   const result = view.outcome ? RESULT_TEXT[view.outcome] : null;
   const critCharged = isCritReady(view.myStreak);
+
+  const [playedWord, setPlayedWord] = useState<WordEntry | null>(null);
+  const [seenWord, setSeenWord] = useState<WordEntry | null>(view.word);
+  if (view.word !== seenWord) {
+    setSeenWord(view.word);
+    setPlayedWord(null);
+  }
+  const soundUnlocked = view.word != null && playedWord === view.word;
+
+  const handlePlayWord = () => {
+    onPlayWord();
+    if (view.word && playedWord !== view.word) setPlayedWord(view.word);
+  };
 
   const seenPopups = useRef<Set<number>>(new Set());
   useEffect(() => {
@@ -74,41 +90,7 @@ export function BattleScreen({
     >
       <FlashOverlay active={flash} />
 
-      {/* HP bars */}
-      <div className="relative flex items-start gap-2 sm:gap-3 mb-3 sm:mb-4">
-        <div className="relative flex-1">
-          <HpBar
-            name={view.myName}
-            hp={view.myHp}
-            max={myMaxHp}
-            streak={view.myStreak}
-          />
-          {view.popups
-            .filter((p) => p.side === "me")
-            .map((p) => (
-              <DamagePopup key={p.id} popup={p} />
-            ))}
-        </div>
-        <span className="font-black text-base sm:text-2xl text-gray-400 dark:text-gray-500 pt-2 sm:pt-4">
-          VS
-        </span>
-        <div className="relative flex-1">
-          <HpBar
-            name={view.oppName}
-            hp={view.oppHp}
-            max={oppMaxHp}
-            streak={view.oppStreak}
-            flip
-          />
-          {view.popups
-            .filter((p) => p.side === "opp")
-            .map((p) => (
-              <DamagePopup key={p.id} popup={p} flip />
-            ))}
-        </div>
-      </div>
-
-      {/* Word progress */}
+      {/* Word HUD — top */}
       <div className="flex items-center gap-3 mb-2">
         <span className="text-xs font-bold tabular-nums text-gray-500 dark:text-gray-400 shrink-0">
           {view.wordNumber} / {view.wordTotal}
@@ -120,21 +102,13 @@ export function BattleScreen({
         />
       </div>
 
-      {/* Timer */}
-      <div className="flex items-center gap-3 mb-3">
-        <div className="flex-1">
-          <TimerBar remainingMs={view.remainingMs} totalMs={TURN_MS} />
-        </div>
-        <SoundToggle />
-      </div>
-
       {/* Word card */}
       <div
-        onClick={onPlayWord}
-        className="mb-3 sm:mb-4 cursor-pointer hover:scale-[1.01] transition-transform touch-manipulation"
+        onClick={handlePlayWord}
+        className="mb-3 cursor-pointer hover:scale-[1.01] transition-transform touch-manipulation"
       >
         <Card className="border-2 border-transparent hover:border-blue-400/50">
-          <CardBody className="text-center py-4 sm:py-6">
+          <CardBody className="text-center py-4 sm:py-5">
             <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-1 break-words">
               {view.word?.word ?? "..."}
             </h3>
@@ -143,36 +117,26 @@ export function BattleScreen({
                 {view.word?.type}
               </span>
               <span className="text-xs text-gray-400">
-                tap word for pronunciation
+                {soundUnlocked
+                  ? "tap word for pronunciation"
+                  : "tap to play sound"}
               </span>
             </div>
           </CardBody>
         </Card>
       </div>
 
-      {/* Feedback */}
-      <div className="mb-2 grid grid-rows-[2.25rem_1.75rem] sm:grid-rows-[2.5rem_1.75rem] justify-items-center">
-        <div className="flex items-center justify-center w-full">
-          {view.feedback ? (
-            <span
-              className={cx(
-                "animate-popIn text-xl font-black tracking-wide",
-                view.feedback.tone === "good"
-                  ? view.feedback.crit
-                    ? "text-orange-400"
-                    : "text-emerald-500"
-                  : "text-red-500",
-              )}
-            >
-              {view.feedback.text}
-              {view.feedback.damage > 0 && (
-                <span className="ml-1 tabular-nums">−{view.feedback.damage}</span>
-              )}
-            </span>
-          ) : null}
+      {/* Timer */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1">
+          <TimerBar remainingMs={view.remainingMs} totalMs={TURN_MS} />
         </div>
-        <div className="flex items-center justify-center w-full">
-          {view.waitingOpp && (
+        <SoundToggle />
+      </div>
+
+      {/* Waiting indicator */}
+      <div className="mb-2 flex items-center justify-center h-7">
+        {view.waitingOpp && (
             <span className="inline-flex items-center gap-2 animate-popIn text-xs sm:text-sm font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-full px-3 py-1">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75 animate-ping" />
@@ -190,22 +154,30 @@ export function BattleScreen({
               </span>
             </span>
           )}
-        </div>
       </div>
 
       {/* Answers */}
-      {view.word && (
-        <AnswerGrid
-          word={view.word}
-          selected={view.selected}
-          answerState={view.answerState}
-          disabled={ended || view.answerState !== "idle"}
-          crit={critCharged && !ended && view.answerState === "idle"}
-          onSelect={(answer) => {
-            if (view.word && answer === view.word.correctAnswer) onPlayWord();
-            onAnswer(answer);
-          }}
-        />
+      {view.word && !soundUnlocked ? (
+        <button
+          onClick={handlePlayWord}
+          className="w-full py-6 sm:py-8 rounded-xl border-2 border-dashed border-blue-400/60 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 font-bold text-base sm:text-lg cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/50 active:scale-[0.98] transition-all touch-manipulation select-none animate-popIn flex items-center justify-center gap-2"
+        >
+          <SpeakerWaveIcon className="w-5 h-5" />
+          Tap to play sound
+        </button>
+      ) : (
+        view.word && (
+          <AnswerGrid
+            word={view.word}
+            selected={view.selected}
+            answerState={view.answerState}
+            disabled={ended || view.answerState !== "idle"}
+            crit={critCharged && !ended && view.answerState === "idle"}
+            onSelect={(answer) => {
+              onAnswer(answer);
+            }}
+          />
+        )
       )}
 
       {allowTimeoutSubmit && !ended && view.answerState === "idle" && (
@@ -220,26 +192,60 @@ export function BattleScreen({
         </div>
       )}
 
+      {/* HP bars — bottom; damage popups drop into the reserved space below */}
+      <div className="relative flex items-start gap-2 sm:gap-3 mt-4 mb-12">
+        <div className="relative flex-1">
+          <HpBar
+            name={view.myName}
+            hp={view.myHp}
+            max={myMaxHp}
+            streak={view.myStreak}
+          />
+          {view.popups
+            .filter((p) => p.side === "me")
+            .map((p) => (
+              <DamagePopup key={p.id} popup={p} below />
+            ))}
+        </div>
+        <span className="font-black text-base sm:text-2xl text-gray-400 dark:text-gray-500 pt-2 sm:pt-4">
+          VS
+        </span>
+        <div className="relative flex-1">
+          <HpBar
+            name={view.oppName}
+            hp={view.oppHp}
+            max={oppMaxHp}
+            streak={view.oppStreak}
+            flip
+          />
+          {view.popups
+            .filter((p) => p.side === "opp")
+            .map((p) => (
+              <DamagePopup key={p.id} popup={p} flip below />
+            ))}
+        </div>
+      </div>
+
       {/* Result overlay */}
-  {ended && result && (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 rounded-xl p-4">
-      <Card className="w-full max-w-xs animate-popIn">
-        <CardBody className="text-center space-y-3 p-5 sm:p-6">
-          <h2
-            className={cx("text-2xl sm:text-3xl font-black", result.color)}
-          >
-            {result.title}
-          </h2>
-          <div className="flex flex-col gap-2 pt-2">
-            {onRematch && <Button onClick={onRematch}>Play again</Button>}
-            <Button onClick={onExit} variant="gray">
-              Back to lobby
-            </Button>
-          </div>
-        </CardBody>
-      </Card>
-    </div>
-  )}
+      {ended && result && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 rounded-xl p-4">
+          <Card className="w-full max-w-xs animate-popIn">
+            <CardBody className="text-center space-y-3 p-5 sm:p-6">
+              <h2
+                className={cx("text-2xl sm:text-3xl font-black", result.color)}
+              >
+                {result.title}
+              </h2>
+              <div className="flex flex-col gap-2 pt-2">
+                {onRematch && <Button onClick={onRematch}>Play again</Button>}
+                <Button onClick={onExit} variant="gray">
+                  Back to lobby
+                </Button>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

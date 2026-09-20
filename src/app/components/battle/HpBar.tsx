@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { cx } from "@emotion/css";
 import { isCritReady } from "../../../game/damage";
 
@@ -21,6 +22,23 @@ export function HpBar({ name, hp, max, streak, flip = false }: HpBarProps) {
   const ratio = Math.max(0, Math.min(1, hp / max));
   const low = ratio <= 0.2 && hp > 0;
   const charged = isCritReady(streak);
+
+  const [ghost, setGhost] = useState(ratio);
+  const [hitCount, setHitCount] = useState(0);
+  const prevHp = useRef(hp);
+
+  useEffect(() => {
+    if (hp < prevHp.current) {
+      const prevRatio = Math.max(0, Math.min(1, prevHp.current / max));
+      setGhost(prevRatio);
+      setHitCount((c) => c + 1);
+      const t = window.setTimeout(() => setGhost(ratio), 450);
+      prevHp.current = hp;
+      return () => window.clearTimeout(t);
+    }
+    prevHp.current = hp;
+    setGhost(ratio);
+  }, [hp, max, ratio]);
 
   return (
     <div className="flex-1 min-w-0">
@@ -60,12 +78,29 @@ export function HpBar({ name, hp, max, streak, flip = false }: HpBarProps) {
           low && !charged && "shadow-[0_0_10px_rgba(239,68,68,0.6)]"
         )}
       >
+        <div
+          className={cx(
+            "absolute inset-0 flex",
+            flip && "justify-end"
+          )}
+        >
+          <div
+            className="h-full bg-red-400/60 dark:bg-red-500/40 transition-[width] duration-300 ease-out"
+            style={{ width: `${ghost * 100}%` }}
+          />
+        </div>
         <div className={cx("absolute inset-0 flex", flip && "justify-end")}>
           <div
             className={cx("h-full", barColor(ratio))}
             style={{ width: `${ratio * 100}%` }}
           />
         </div>
+        {hitCount > 0 && (
+          <div
+            key={hitCount}
+            className="absolute inset-0 bg-white animate-barFlash pointer-events-none"
+          />
+        )}
         <div className="absolute inset-x-0 top-0 h-1/2 rounded-t-full bg-white/20 pointer-events-none" />
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <span
