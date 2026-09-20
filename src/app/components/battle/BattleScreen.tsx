@@ -160,29 +160,46 @@ export function BattleScreen({
       </div>
 
       {/* Feedback */}
-      <div className="h-9 sm:h-10 mb-2 flex items-center justify-center">
-        {view.feedback && (
-          <span
-            className={cx(
-              "animate-popIn text-xl font-black tracking-wide",
-              view.feedback.tone === "good"
-                ? view.feedback.crit
-                  ? "text-orange-400"
-                  : "text-emerald-500"
-                : "text-red-500",
-            )}
-          >
-            {view.feedback.text}
-            {view.feedback.damage > 0 && (
-              <span className="ml-1 tabular-nums">−{view.feedback.damage}</span>
-            )}
-          </span>
-        )}
-        {view.waitingOpp && (
-          <span className="text-sm text-gray-400 animate-pulse">
-            Waiting for opponent...
-          </span>
-        )}
+      <div className="mb-2 grid grid-rows-[2.25rem_1.75rem] sm:grid-rows-[2.5rem_1.75rem] justify-items-center">
+        <div className="flex items-center justify-center w-full">
+          {view.feedback && (
+            <span
+              className={cx(
+                "animate-popIn text-xl font-black tracking-wide",
+                view.feedback.tone === "good"
+                  ? view.feedback.crit
+                    ? "text-orange-400"
+                    : "text-emerald-500"
+                  : "text-red-500",
+              )}
+            >
+              {view.feedback.text}
+              {view.feedback.damage > 0 && (
+                <span className="ml-1 tabular-nums">−{view.feedback.damage}</span>
+              )}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center justify-center w-full">
+          {view.waitingOpp && (
+            <span className="inline-flex items-center gap-2 animate-popIn text-xs sm:text-sm font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-full px-3 py-1">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75 animate-ping" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
+              </span>
+              Waiting for opponent
+              <span className="inline-flex items-end gap-0.5" aria-hidden>
+                {[0, 1, 2].map((i) => (
+                  <span
+                    key={i}
+                    className="h-1 w-1 rounded-full bg-blue-400 animate-bounce"
+                    style={{ animationDelay: `${i * 150}ms` }}
+                  />
+                ))}
+              </span>
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Answers */}

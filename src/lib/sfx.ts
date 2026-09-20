@@ -1,6 +1,6 @@
 const SFX_URLS = {
-  hit: `https://www.myinstants.com/media/sounds/zapsplat_warfare_sword_swing_fast_whoosh_metal_004.mp3`,
-  crit: `https://www.myinstants.com/media/sounds/combat-sword-swing-hit.mp3`,
+  hit: `https://www.myinstants.com/media/sounds/punch-notification_sound-493565.mp3`,
+  crit: `https://www.myinstants.com/media/sounds/strongpunch.mp3`,
   hurt: `https://www.myinstants.com/media/sounds/sharp-punch-soundbible.mp3`,
   win: `https://www.myinstants.com/media/sounds/skyrim_level_up_sound_effect_free_downloadx1.mp3`,
   lose: `https://www.myinstants.com/media/sounds/skyrim-skill-level-up.mp3`,

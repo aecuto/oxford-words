@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { cx } from "@emotion/css";
+import { STREAK_FOR_CRIT } from "../../../lib/gameConfig";
 
 type HpBarProps = {
   name: string;
@@ -20,6 +21,8 @@ function barColor(ratio: number): string {
 export function HpBar({ name, hp, max, streak, flip = false }: HpBarProps) {
   const ratio = Math.max(0, Math.min(1, hp / max));
   const low = ratio <= 0.2 && hp > 0;
+  const charge = streak % STREAK_FOR_CRIT;
+  const critReady = streak > 0 && charge === STREAK_FOR_CRIT - 1;
   const [ghostRatio, setGhostRatio] = useState(ratio);
 
   useEffect(() => {
@@ -44,12 +47,29 @@ export function HpBar({ name, hp, max, streak, flip = false }: HpBarProps) {
         <span
           className={cx(
             "text-xs font-black px-1.5 py-0.5 rounded",
-            streak >= 3
-              ? "bg-orange-500 text-white animate-pulse"
-              : "bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400"
+            critReady
+              ? "bg-yellow-400 text-yellow-950 animate-pulse shadow-[0_0_8px_rgba(250,204,21,0.8)]"
+              : streak >= 1
+                ? "bg-orange-500 text-white"
+                : "bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400"
           )}
         >
           x{streak}
+        </span>
+        <span className="flex gap-0.5" aria-hidden>
+          {Array.from({ length: STREAK_FOR_CRIT - 1 }, (_, i) => (
+            <span
+              key={i}
+              className={cx(
+                "h-1.5 w-1.5 rounded-full",
+                i < charge
+                  ? critReady
+                    ? "bg-yellow-400"
+                    : "bg-orange-400"
+                  : "bg-gray-300 dark:bg-gray-600"
+              )}
+            />
+          ))}
         </span>
       </div>
       <div

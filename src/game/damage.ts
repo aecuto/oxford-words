@@ -18,7 +18,7 @@ function tierFor(elapsedMs: number): DamageTier {
 }
 
 function isCrit(streakAfter: number): boolean {
-  return streakAfter >= STREAK_FOR_CRIT;
+  return streakAfter % STREAK_FOR_CRIT === 0;
 }
 
 export function computeHit(

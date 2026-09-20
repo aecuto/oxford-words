@@ -18,7 +18,7 @@ export const DAMAGE = {
 } as const;
 
 export const CRIT_MULTIPLIER = 2;
-export const STREAK_FOR_CRIT = 5;
+export const STREAK_FOR_CRIT = 4;
 
 export const SOLO_BOT = {
   name: "BOT",
