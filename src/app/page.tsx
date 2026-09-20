@@ -22,7 +22,7 @@ export default function BattleHub() {
     () => true,
     () => false,
   );
-  const { name, saveName } = useStoredName();
+  const { name } = useStoredName();
   const [joinCode, setJoinCode] = useState("");
   const [busy, setBusy] = useState<"create" | "join" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -97,42 +97,36 @@ export default function BattleHub() {
                 </p>
               </div>
 
-              <input
-                value={name}
-                onChange={(e) => saveName(e.target.value)}
-                maxLength={16}
-                placeholder="Your name"
-                className="w-full px-3.5 py-2.5 sm:py-3 rounded-lg bg-gray-800 border border-gray-600 text-base text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-
-              <Button
-                onClick={create}
-                disabled={busy !== null}
-                className="w-full sm:text-lg sm:py-3.5"
-              >
-                {busy === "create" ? "Creating room..." : "Create room"}
-              </Button>
-
-              <div className="flex items-stretch gap-2 pt-1">
-                <input
-                  value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                  maxLength={4}
-                  inputMode="text"
-                  autoCapitalize="characters"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  placeholder="CODE"
-                  className="flex-1 min-w-0 px-3 py-2.5 sm:py-3 rounded-lg bg-gray-800 border border-gray-600 font-mono font-bold text-base sm:text-lg tracking-widest uppercase text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+              <div className="flex flex-col gap-3 sm:gap-3.5">
                 <Button
-                  onClick={join}
+                  onClick={create}
                   disabled={busy !== null}
-                  variant="blue"
-                  className="shrink-0 min-h-[3rem] sm:min-h-0"
+                  className="w-full sm:text-lg sm:py-3.5"
                 >
-                  {busy === "join" ? "..." : "Join"}
+                  {busy === "create" ? "Creating room..." : "Create room"}
                 </Button>
+
+                <div className="flex items-stretch gap-2">
+                  <input
+                    value={joinCode}
+                    onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                    maxLength={4}
+                    inputMode="text"
+                    autoCapitalize="characters"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    placeholder="CODE"
+                    className="flex-1 min-w-0 px-3 py-2.5 sm:py-3 rounded-lg bg-gray-800 border border-gray-600 font-mono font-bold text-base sm:text-lg tracking-widest uppercase text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <Button
+                    onClick={join}
+                    disabled={busy !== null}
+                    variant="blue"
+                    className="shrink-0 min-h-[3rem] sm:min-h-0"
+                  >
+                    {busy === "join" ? "..." : "Join"}
+                  </Button>
+                </div>
               </div>
             </CardBody>
           </Card>

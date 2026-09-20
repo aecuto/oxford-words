@@ -79,7 +79,7 @@ export function BattleScreen({
   return (
     <div
       className={cx(
-        "relative max-w-screen-md m-auto w-full px-2.5 sm:p-3 select-none",
+        "relative max-w-screen-md m-auto w-full p-4 sm:p-6 select-none",
         shake && "animate-shake",
       )}
     >
@@ -100,7 +100,7 @@ export function BattleScreen({
               <DamagePopup key={p.id} popup={p} />
             ))}
         </div>
-        <span className="font-black text-sm sm:text-lg text-gray-400 dark:text-gray-500 pt-1.5 sm:pt-3">
+        <span className="font-black text-base sm:text-2xl text-gray-400 dark:text-gray-500 pt-2 sm:pt-4">
           VS
         </span>
         <div className="relative flex-1">
