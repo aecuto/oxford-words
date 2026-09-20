@@ -46,6 +46,7 @@ export type PlayerSlot = {
   streak: number;
   hits: Hit[];
   lastAnswer: LastAnswer | null;
+  words: BattleWord[];
 };
 
 export type SlotKey = "p1" | "p2";

@@ -36,11 +36,11 @@ export function HpBar({ name, hp, max, streak, flip = false }: HpBarProps) {
     <div className="flex-1 min-w-0">
       <div
         className={cx(
-          "flex items-center gap-2 mb-1 text-sm",
+          "flex items-center gap-1.5 sm:gap-2 mb-1 text-xs sm:text-sm",
           flip && "flex-row-reverse"
         )}
       >
-        <span className="font-bold truncate max-w-[55%]">{name}</span>
+        <span className="font-bold truncate max-w-[45%] sm:max-w-[55%]">{name}</span>
         <span
           className={cx(
             "text-xs font-black px-1.5 py-0.5 rounded",

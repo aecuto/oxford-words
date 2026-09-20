@@ -5,8 +5,19 @@ import { computeHit, clampElapsed } from "../game/damage";
 import { feedbackFor, type Feedback } from "../game/feedback";
 import { loadWordPool, pickBattleWords } from "../game/wordPool";
 import { recordResult } from "../game/progressService";
+import {
+  loadWordStats,
+  saveWordResults,
+  type WordResult,
+  type WordStats,
+} from "../game/wordProgress";
 import type { BattleWord, Popup } from "../game/types";
-import { MAX_HP, SOLO_BOSS, TURN_MS } from "../lib/gameConfig";
+import {
+  MAX_HP,
+  SOLO_BOSS,
+  TURN_MS,
+  WORDS_PER_BATTLE,
+} from "../lib/gameConfig";
 import { useCountdown } from "./useCountdown";
 import type { BattleOutcome } from "./useBattleRoom";
 
@@ -14,6 +25,7 @@ export function useSoloBattle() {
   const [words, setWords] = useState<BattleWord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [wordIndex, setWordIndex] = useState(0);
+  const [wordResults, setWordResults] = useState<(boolean | null)[]>([]);
   const [bossHp, setBossHp] = useState<number>(SOLO_BOSS.hp);
   const [myHp, setMyHp] = useState(MAX_HP);
   const [streak, setStreak] = useState(0);
@@ -30,6 +42,9 @@ export function useSoloBattle() {
   const timersRef = useRef<number[]>([]);
   const submittedAtRef = useRef(-1);
   const recordedRef = useRef(false);
+  const poolRef = useRef<Awaited<ReturnType<typeof loadWordPool>>>([]);
+  const statsRef = useRef<WordStats>({});
+  const resultsRef = useRef<WordResult[]>([]);
 
   const remainingMs = useCountdown(startedAt, TURN_MS);
 
@@ -47,6 +62,7 @@ export function useSoloBattle() {
     lockRef.current = false;
     submittedAtRef.current = -1;
     recordedRef.current = false;
+    resultsRef.current = [];
     setWordIndex(0);
     setBossHp(SOLO_BOSS.hp);
     setMyHp(MAX_HP);
@@ -56,6 +72,15 @@ export function useSoloBattle() {
     setFeedback(null);
     setPopups([]);
     setOutcome(null);
+    if (poolRef.current.length) {
+      const picked = pickBattleWords(
+        poolRef.current,
+        WORDS_PER_BATTLE,
+        statsRef.current
+      );
+      setWords(picked);
+      setWordResults(new Array(picked.length).fill(null));
+    }
     setStartedAt(Date.now());
   }, []);
 
@@ -65,7 +90,12 @@ export function useSoloBattle() {
       try {
         const pool = await loadWordPool();
         if (!alive) return;
-        setWords(pickBattleWords(pool));
+        const stats = loadWordStats();
+        poolRef.current = pool;
+        statsRef.current = stats;
+        const picked = pickBattleWords(pool, WORDS_PER_BATTLE, stats);
+        setWords(picked);
+        setWordResults(new Array(picked.length).fill(null));
         setStartedAt(Date.now());
       } catch (e) {
         console.error(e);
@@ -87,6 +117,18 @@ export function useSoloBattle() {
     ) => {
       const current = words[wordIndex];
       const isLast = wordIndex + 1 >= words.length;
+
+      if (current) {
+        resultsRef.current.push({
+          word: current.word,
+          correct: result === "correct",
+        });
+        setWordResults((prev) => {
+          const next = [...prev];
+          next[wordIndex] = result === "correct";
+          return next;
+        });
+      }
 
       let nextBoss = bossHp;
       let nextMy = myHp;
@@ -170,6 +212,10 @@ export function useSoloBattle() {
     recordResult(outcome, streak).catch((e) =>
       console.error("progress:record", e)
     );
+    if (resultsRef.current.length) {
+      statsRef.current = saveWordResults(resultsRef.current);
+      resultsRef.current = [];
+    }
   }, [outcome, streak]);
 
   const view = useMemo(() => {
@@ -184,6 +230,7 @@ export function useSoloBattle() {
       word: current,
       wordNumber: wordIndex + 1,
       wordTotal: words.length,
+      wordResults,
       selected,
       answerState,
       feedback,
@@ -195,6 +242,7 @@ export function useSoloBattle() {
   }, [
     words,
     wordIndex,
+    wordResults,
     myHp,
     bossHp,
     streak,

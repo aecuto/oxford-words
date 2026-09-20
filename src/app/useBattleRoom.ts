@@ -19,10 +19,16 @@ import type {
   Popup,
   SlotKey,
 } from "../game/types";
-import { TURN_GRACE_MS, TURN_MS } from "../lib/gameConfig";
+import { TURN_GRACE_MS, TURN_MS, WORDS_PER_BATTLE } from "../lib/gameConfig";
 import { describeAuthError, ensureAnonAuth } from "../lib/firebase";
 import { useCountdown } from "./useCountdown";
 import { recordResult } from "../game/progressService";
+import { mergeWordLists, loadWordPool, pickBattleWords } from "../game/wordPool";
+import { loadWordStats } from "../game/wordProgress";
+import {
+  saveWordResults,
+  type WordResult,
+} from "../game/wordProgress";
 
 export type BattleOutcome = "win" | "lose" | "draw" | null;
 
@@ -36,6 +42,7 @@ export type BattleView = {
   word: ClientRoom["words"][number] | null;
   wordNumber: number;
   wordTotal: number;
+  wordResults?: (boolean | null)[];
   selected: string | null;
   answerState: "idle" | "correct" | "wrong" | "timeout";
   feedback: Feedback | null;
@@ -60,6 +67,7 @@ export function useBattleRoom(code: string, name: string) {
   const submittedWordRef = useRef<number>(-1);
   const liveSeenRef = useRef(false);
   const recordedRoomRef = useRef<string | null>(null);
+  const resultsRef = useRef<WordResult[]>([]);
 
   useEffect(() => {
     roomRef.current = room;
@@ -136,7 +144,18 @@ export function useBattleRoom(code: string, name: string) {
           existing.players.p2?.uid !== myUid
         ) {
           if (existing.players.p2 === null && existing.status === "waiting") {
-            await joinRoom(code, myUid, nameRef.current || "Player 2");
+            const pool = await loadWordPool();
+            const myWords = pickBattleWords(
+              pool,
+              WORDS_PER_BATTLE,
+              loadWordStats()
+            );
+            await joinRoom(
+              code,
+              myUid,
+              nameRef.current || "Player 2",
+              myWords
+            );
           } else {
             setError("This room is full.");
             return;
@@ -182,7 +201,14 @@ export function useBattleRoom(code: string, name: string) {
     const r = room;
     if (!r || !isHost) return;
     if (r.status === "waiting" && r.players.p2 != null) {
-      void acting("start", () => startGame(r.code));
+      void acting("start", async () => {
+        const merged = mergeWordLists(
+          r.words,
+          r.players.p2?.words ?? [],
+          r.words.length || WORDS_PER_BATTLE
+        );
+        await startGame(r.code, merged);
+      });
     }
   }, [room, isHost, acting]);
 
@@ -236,6 +262,10 @@ export function useBattleRoom(code: string, name: string) {
     if (!my || my.lastAnswer?.wordIndex === r.wordIndex) return;
     if (submittedWordRef.current === r.wordIndex) return;
     submittedWordRef.current = r.wordIndex;
+    const timedOutWord = r.words[r.wordIndex];
+    if (timedOutWord) {
+      resultsRef.current.push({ word: timedOutWord.word, correct: false });
+    }
     void acting(`timeout-${r.wordIndex}`, () =>
       submitAnswer(
         r.code,
@@ -297,6 +327,7 @@ export function useBattleRoom(code: string, name: string) {
         correct,
         at: Date.now(),
       };
+      resultsRef.current.push({ word: current.word, correct });
 
       setFeedback(
         feedbackFor(correct ? "correct" : timeout ? "timeout" : "wrong", hit?.crit ?? false)
@@ -349,6 +380,13 @@ export function useBattleRoom(code: string, name: string) {
       word: current,
       wordNumber: room.wordIndex + 1,
       wordTotal: room.words.length,
+      wordResults: room.words.map((_, i) => {
+        if (my.hits.some((h) => h.wordIndex === i)) return true;
+        if (i === room.wordIndex) {
+          return answeredCurrent ? my.lastAnswer!.correct : null;
+        }
+        return null;
+      }),
       selected: answeredCurrent ? my.lastAnswer!.answer : null,
       answerState,
       feedback,
@@ -372,6 +410,10 @@ export function useBattleRoom(code: string, name: string) {
     recordResult(outcome, room.players[slotKey]?.streak ?? 0).catch((e) =>
       console.error("progress:record", e)
     );
+    if (resultsRef.current.length) {
+      saveWordResults(resultsRef.current);
+      resultsRef.current = [];
+    }
   }, [view, room, slotKey]);
 
   return {

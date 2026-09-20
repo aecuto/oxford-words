@@ -18,7 +18,7 @@ export const CRIT_MULTIPLIER = 2;
 export const STREAK_FOR_CRIT = 3;
 
 export const SOLO_BOSS = {
-  name: "WORD BOSS",
+  name: "BOT",
   hp: 300,
   hit: 15,
 } as const;

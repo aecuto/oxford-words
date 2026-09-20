@@ -20,7 +20,7 @@ export function AnswerGrid({
   onSelect,
 }: AnswerGridProps) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3 select-none touch-manipulation">
       {word.options.map((option, idx) => {
         const isSelected = selected === option;
         const isCorrect = isSelected && answerState === "correct";
@@ -34,16 +34,16 @@ export function AnswerGrid({
               "border-2 transition-all",
               answerState !== "idle"
                 ? "opacity-60 cursor-not-allowed"
-                : "cursor-pointer hover:shadow-lg hover:scale-[1.02] active:scale-95",
+                : "cursor-pointer hover:shadow-lg active:scale-95",
               isCorrect && "!opacity-100 border-emerald-500 bg-emerald-100 dark:bg-emerald-900 scale-105",
               isWrong && "!opacity-100 border-red-500 bg-red-100 dark:bg-red-900",
               showReal && !isCorrect && "!opacity-100 border-emerald-500 bg-emerald-100 dark:bg-emerald-900"
             )}
           >
-            <CardBody className="p-3">
-              <ul className="space-y-0.5 list-disc list-inside">
+            <CardBody className="p-2.5 sm:p-3 min-h-[3.25rem] flex items-center">
+              <ul className="space-y-0.5 list-disc list-inside w-full">
                 {option.split(", ").map((text, i) => (
-                  <li key={i} className="text-sm">
+                  <li key={i} className="text-[13px] sm:text-sm leading-snug">
                     {text}
                   </li>
                 ))}

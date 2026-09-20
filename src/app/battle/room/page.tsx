@@ -73,11 +73,11 @@ function RoomPage() {
     return (
       <Center>
         <Card className="w-full max-w-sm animate-popIn">
-          <CardBody className="text-center space-y-3 p-6">
+          <CardBody className="text-center space-y-3 p-5 sm:p-6">
             <p className="text-sm text-gray-500 dark:text-gray-400">
               Room code — share it with your friend
             </p>
-            <p className="text-5xl font-black font-mono tracking-[0.3em]">
+            <p className="text-4xl sm:text-5xl font-black font-mono tracking-[0.2em] sm:tracking-[0.3em]">
               {code}
             </p>
             <p className="text-xs text-gray-400 break-all">{shareLink}</p>
@@ -105,7 +105,7 @@ function RoomPage() {
   }
 
   return (
-    <div className="dark min-h-screen">
+    <div className="dark min-h-dvh pt-safe pb-safe">
       <BattleScreen
         view={view}
         myMaxHp={100}
@@ -123,7 +123,7 @@ function Center({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={cx(
-        "min-h-screen flex flex-col items-center justify-center p-4",
+        "min-h-dvh flex flex-col items-center justify-center p-4",
         "dark"
       )}
     >
@@ -136,7 +136,7 @@ export default function BattleRoom() {
   return (
     <Suspense
       fallback={
-        <div className="flex w-full h-screen items-center justify-center">
+        <div className="flex w-full min-h-dvh items-center justify-center">
           <div className="loader" />
         </div>
       }

@@ -13,7 +13,7 @@ export function SoundToggle() {
       onClick={() => setSfxMuted(!muted)}
       aria-label={muted ? "Unmute sound effects" : "Mute sound effects"}
       title={muted ? "Sound off" : "Sound on"}
-      className="w-8 h-8 shrink-0 rounded-full text-base leading-none border border-gray-300 dark:border-gray-600 bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors"
+      className="w-9 h-9 sm:w-8 sm:h-8 shrink-0 rounded-full text-base leading-none border border-gray-300 dark:border-gray-600 bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors touch-manipulation select-none"
     >
       {muted ? "🔇" : "🔊"}
     </button>

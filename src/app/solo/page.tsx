@@ -13,8 +13,8 @@ export default function SoloPage() {
 
   if (phase === "loading") {
     return (
-      <div className="dark min-h-screen">
-        <div className="flex w-full h-screen items-center justify-center">
+      <div className="dark min-h-dvh">
+        <div className="flex w-full min-h-dvh items-center justify-center">
           <div className="loader" />
         </div>
       </div>
@@ -23,7 +23,7 @@ export default function SoloPage() {
 
   if (error) {
     return (
-      <div className="dark min-h-screen flex flex-col items-center justify-center p-4">
+      <div className="dark min-h-dvh flex flex-col items-center justify-center p-4">
         <p className="text-red-400 text-sm mb-4">{error}</p>
         <Button onClick={() => router.push("/")}>Back to lobby</Button>
       </div>
@@ -31,7 +31,7 @@ export default function SoloPage() {
   }
 
   return (
-    <div className="dark min-h-screen">
+    <div className="dark min-h-dvh pt-safe pb-safe">
       <BattleScreen
         view={view}
         myMaxHp={MAX_HP}

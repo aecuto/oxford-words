@@ -32,8 +32,8 @@ function randomCode(): string {
   return code;
 }
 
-function newSlot(uid: string, name: string): PlayerSlot {
-  return { uid, name, streak: 0, hits: [], lastAnswer: null };
+function newSlot(uid: string, name: string, words: BattleWord[]): PlayerSlot {
+  return { uid, name, streak: 0, hits: [], lastAnswer: null, words };
 }
 
 function toClientRoom(data: RoomDoc | undefined): ClientRoom | null {
@@ -63,7 +63,7 @@ export async function createRoom(
       words: sliced,
       wordIndex: 0,
       turnStartedAt: null,
-      players: { p1: newSlot(uid, name), p2: null },
+      players: { p1: newSlot(uid, name, []), p2: null },
       winner: null,
     };
     await setDoc(ref, room);
@@ -86,14 +86,20 @@ export function subscribeRoom(
   );
 }
 
-export async function joinRoom(code: string, uid: string, name: string): Promise<void> {
+export async function joinRoom(
+  code: string,
+  uid: string,
+  name: string,
+  words: BattleWord[]
+): Promise<void> {
   await updateDoc(roomRef(code), {
-    "players.p2": newSlot(uid, name),
+    "players.p2": newSlot(uid, name, words),
   });
 }
 
-export async function startGame(code: string): Promise<void> {
+export async function startGame(code: string, words: BattleWord[]): Promise<void> {
   await updateDoc(roomRef(code), {
+    words,
     status: "playing",
     turnStartedAt: serverTimestamp(),
   });

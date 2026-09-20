@@ -13,6 +13,7 @@ import { FlashOverlay, useCritEffects } from "./EffectLayer";
 import { HpBar } from "./HpBar";
 import { SoundToggle } from "./SoundToggle";
 import { TimerBar } from "./TimerBar";
+import { WordProgress } from "./WordProgress";
 
 type BattleScreenProps = {
   view: BattleView;
@@ -76,14 +77,14 @@ export function BattleScreen({
   return (
     <div
       className={cx(
-        "relative max-w-screen-md m-auto p-3 select-none",
+        "relative max-w-screen-md m-auto w-full px-2.5 sm:p-3 select-none",
         shake && "animate-shake"
       )}
     >
       <FlashOverlay active={flash} />
 
       {/* HP bars */}
-      <div className="relative flex items-start gap-3 mb-4">
+      <div className="relative flex items-start gap-2 sm:gap-3 mb-3 sm:mb-4">
         <div className="relative flex-1">
           <HpBar
             name={view.myName}
@@ -97,7 +98,7 @@ export function BattleScreen({
               <DamagePopup key={p.id} popup={p} />
             ))}
         </div>
-        <span className="font-black text-lg text-gray-400 dark:text-gray-500 pt-3">
+        <span className="font-black text-sm sm:text-lg text-gray-400 dark:text-gray-500 pt-1.5 sm:pt-3">
           VS
         </span>
         <div className="relative flex-1">
@@ -116,11 +117,20 @@ export function BattleScreen({
         </div>
       </div>
 
-      {/* Round + timer */}
-      <div className="flex items-center gap-3 mb-3">
-        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-300 shrink-0">
+      {/* Word progress */}
+      <div className="flex items-center gap-3 mb-2">
+        <span className="text-xs font-bold tabular-nums text-gray-500 dark:text-gray-400 shrink-0">
           {view.wordNumber} / {view.wordTotal}
         </span>
+        <WordProgress
+          total={view.wordTotal}
+          current={view.wordNumber - 1}
+          results={view.wordResults}
+        />
+      </div>
+
+      {/* Timer */}
+      <div className="flex items-center gap-3 mb-3">
         <div className="flex-1">
           <TimerBar remainingMs={view.remainingMs} totalMs={TURN_MS} />
         </div>
@@ -130,11 +140,11 @@ export function BattleScreen({
       {/* Word card */}
       <div
         onClick={onPlayWord}
-        className="mb-4 cursor-pointer hover:scale-[1.01] transition-transform"
+        className="mb-3 sm:mb-4 cursor-pointer hover:scale-[1.01] transition-transform touch-manipulation"
       >
         <Card className="border-2 border-transparent hover:border-blue-400/50">
-          <CardBody className="text-center py-6">
-            <h3 className="text-3xl md:text-4xl font-bold mb-1">
+          <CardBody className="text-center py-4 sm:py-6">
+            <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-1 break-words">
               {view.word?.word ?? "..."}
             </h3>
             <div className="flex items-center justify-center gap-2">
@@ -150,7 +160,7 @@ export function BattleScreen({
       </div>
 
       {/* Feedback */}
-      <div className="h-10 mb-2 flex items-center justify-center">
+      <div className="h-9 sm:h-10 mb-2 flex items-center justify-center">
         {view.feedback && (
           <span
             className={cx(
@@ -196,13 +206,13 @@ export function BattleScreen({
 
       {/* Result overlay */}
       {ended && result && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 rounded-xl">
-          <Card className="w-72 animate-popIn">
-            <CardBody className="text-center space-y-3 p-6">
-              <h2 className={cx("text-3xl font-black", result.color)}>
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 rounded-xl p-4">
+          <Card className="w-full max-w-xs animate-popIn">
+            <CardBody className="text-center space-y-3 p-5 sm:p-6">
+              <h2 className={cx("text-2xl sm:text-3xl font-black", result.color)}>
                 {result.title}
               </h2>
-              <p className="text-sm text-gray-400">
+              <p className="text-sm text-gray-400 break-words">
                 {view.myName} {view.myHp} — {view.oppHp} {view.oppName}
               </p>
               <div className="flex flex-col gap-2 pt-2">

@@ -22,9 +22,9 @@ export function Button({
       onClick={onClick}
       disabled={disabled}
       className={cx(
-        "px-6 py-3 rounded-lg font-medium transition-colors",
+        "px-6 py-3 rounded-lg font-medium transition-colors touch-manipulation select-none",
         "text-white bg-red-500 border border-red-600",
-        "shadow-md hover:bg-red-600",
+        "shadow-md hover:bg-red-600 active:scale-[0.98]",
         "disabled:opacity-50 disabled:cursor-not-allowed",
         className
       )}
