@@ -9,7 +9,7 @@ import { SOLO_BOT, MAX_HP } from "../../lib/gameConfig";
 
 export default function SoloPage() {
   const router = useRouter();
-  const { phase, error, view, submit, reset } = useSoloBattle();
+  const { phase, error, view, submit } = useSoloBattle();
 
   if (phase === "loading") {
     return (
@@ -39,7 +39,9 @@ export default function SoloPage() {
         onAnswer={submit}
         onPlayWord={() => playWordAudio(view.word?.pronounce)}
         onExit={() => router.push("/")}
-        onRematch={reset}
+        onViewResult={() =>
+          router.push(`/result?outcome=${view.outcome}&mode=solo`)
+        }
       />
     </div>
   );

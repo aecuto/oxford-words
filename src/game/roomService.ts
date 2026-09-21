@@ -121,14 +121,19 @@ export async function submitAnswer(
   key: SlotKey,
   lastAnswer: LastAnswer,
   hit: Hit | null,
-  streak: number
+  streak: number,
+  oppHit: Hit | null = null
 ): Promise<void> {
+  const oppKey: SlotKey = key === "p1" ? "p2" : "p1";
   const update: Record<string, unknown> = {
     [`players.${key}.lastAnswer`]: lastAnswer,
     [`players.${key}.streak`]: streak,
   };
   if (hit) {
     update[`players.${key}.hits`] = arrayUnion(hit);
+  }
+  if (oppHit) {
+    update[`players.${oppKey}.hits`] = arrayUnion(oppHit);
   }
   await updateDoc(roomRef(code), update);
 }

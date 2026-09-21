@@ -8,7 +8,6 @@ import { isCritReady } from "../../../game/damage";
 import { TURN_MS } from "../../../lib/gameConfig";
 import { playSfx } from "../../../lib/sfx";
 import { Card, CardBody } from "../ui/Card";
-import { Button } from "../ui/Button";
 import { AnswerGrid } from "./AnswerGrid";
 import { DamagePopup } from "./DamagePopup";
 import { FlashOverlay, useCritEffects } from "./EffectLayer";
@@ -24,14 +23,8 @@ type BattleScreenProps = {
   onAnswer: (answer: string | null) => void;
   onPlayWord: () => void;
   onExit: () => void;
-  onRematch?: () => void;
+  onViewResult: () => void;
 };
-
-const RESULT_TEXT = {
-  win: { title: "VICTORY", color: "text-emerald-500" },
-  lose: { title: "DEFEAT", color: "text-red-500" },
-  draw: { title: "DRAW", color: "text-amber-500" },
-} as const;
 
 export function BattleScreen({
   view,
@@ -40,25 +33,11 @@ export function BattleScreen({
   onAnswer,
   onPlayWord,
   onExit,
-  onRematch,
+  onViewResult,
 }: BattleScreenProps) {
   const { shake, flash } = useCritEffects(view.popups);
   const ended = view.outcome !== null;
-  const result = view.outcome ? RESULT_TEXT[view.outcome] : null;
   const critCharged = isCritReady(view.myStreak);
-
-  const [resultShown, setResultShown] = useState(false);
-  const [prevOutcome, setPrevOutcome] = useState(view.outcome);
-  if (prevOutcome !== view.outcome) {
-    setPrevOutcome(view.outcome);
-    setResultShown(false);
-  }
-
-  const showResult = () => {
-    if (!view.outcome || resultShown) return;
-    setResultShown(true);
-    playSfx(view.outcome);
-  };
 
   const [playedWordNumber, setPlayedWordNumber] = useState<number | null>(null);
   const soundUnlocked = playedWordNumber === view.wordNumber;
@@ -66,6 +45,11 @@ export function BattleScreen({
   const handlePlayWord = () => {
     onPlayWord();
     setPlayedWordNumber(view.wordNumber);
+  };
+
+  const handleViewResult = () => {
+    if (view.outcome) playSfx(view.outcome);
+    onViewResult();
   };
 
   const seenPopups = useRef<Set<number>>(new Set());
@@ -134,7 +118,7 @@ export function BattleScreen({
       {/* Waiting indicator */}
       <div className="mb-2 flex flex-wrap items-center justify-center gap-2 min-h-7">
         {view.waitingOpp && (
-            <>
+          <>
             <span className="inline-flex items-center gap-2 animate-popIn text-xs sm:text-sm font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-full px-3 py-1">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75 animate-ping" />
@@ -156,15 +140,15 @@ export function BattleScreen({
                 className={cx(
                   "inline-flex items-center gap-1.5 animate-popIn text-xs sm:text-sm font-semibold",
                   "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40",
-                  "rounded-full px-3 py-1 border border-emerald-200 dark:border-emerald-800"
+                  "rounded-full px-3 py-1 border border-emerald-200 dark:border-emerald-800",
                 )}
               >
                 Answer:
                 <span className="font-bold">{view.word.correctAnswer}</span>
               </span>
             )}
-            </>
-          )}
+          </>
+        )}
       </div>
 
       {/* Answers */}
@@ -225,37 +209,16 @@ export function BattleScreen({
         </div>
       </div>
 
-      {/* View result tab */}
-      {ended && !resultShown && (
+      {/* View result tab — navigates to the result page */}
+      {ended && (
         <div className="absolute inset-x-0 bottom-2 z-40 flex justify-center px-4">
           <button
-            onClick={showResult}
+            onClick={handleViewResult}
             className="animate-popIn inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-3 text-sm sm:text-base font-black text-white shadow-lg shadow-indigo-600/30 hover:bg-indigo-500 active:scale-95 transition-all touch-manipulation select-none"
           >
             <FlagIcon className="w-5 h-5" />
             View result
           </button>
-        </div>
-      )}
-
-      {/* Result overlay */}
-      {resultShown && result && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 rounded-xl p-4">
-          <Card className="w-full max-w-xs animate-popIn">
-            <CardBody className="text-center space-y-3 p-5 sm:p-6">
-              <h2
-                className={cx("text-2xl sm:text-3xl font-black", result.color)}
-              >
-                {result.title}
-              </h2>
-              <div className="flex flex-col gap-2 pt-2">
-                {onRematch && <Button onClick={onRematch}>Play again</Button>}
-                <Button onClick={onExit} variant="gray">
-                  Back to lobby
-                </Button>
-              </div>
-            </CardBody>
-          </Card>
         </div>
       )}
     </div>

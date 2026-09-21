@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { computeHit, clampElapsed } from "../game/damage";
-import { feedbackFor, type Feedback } from "../game/feedback";
 import { loadWordPool, pickBattleWords } from "../game/wordPool";
 import { recordResult } from "../game/progressService";
 import {
@@ -33,7 +32,6 @@ export function useSoloBattle() {
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [answerState, setAnswerState] = useState<AnswerState>("idle");
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [outcome, setOutcome] = useState<BattleOutcome>(null);
 
   const timersRef = useRef<number[]>([]);
@@ -57,7 +55,6 @@ export function useSoloBattle() {
     setStreak(0);
     setSelected(null);
     setAnswerState("idle");
-    setFeedback(null);
     setOutcome(null);
     if (poolRef.current.length) {
       const picked = pickBattleWords(
@@ -129,9 +126,6 @@ export function useSoloBattle() {
         spawnPopup("me", SOLO_BOT.hit, false);
       }
       setStreak(nextStreak);
-      setFeedback(
-        feedbackFor(result, crit, result === "correct" ? dealtDamage : SOLO_BOT.hit)
-      );
 
       const t = window.setTimeout(() => {
         if (nextBot <= 0) {
@@ -151,7 +145,6 @@ export function useSoloBattle() {
         setWordIndex((i) => i + 1);
         setSelected(null);
         setAnswerState("idle");
-        setFeedback(null);
         setStartedAt(Date.now());
       }, 900);
       timersRef.current.push(t);
@@ -219,7 +212,6 @@ export function useSoloBattle() {
       wordResults,
       selected,
       answerState,
-      feedback,
       waitingOpp: false,
       remainingMs,
       popups,
@@ -234,7 +226,6 @@ export function useSoloBattle() {
     streak,
     selected,
     answerState,
-    feedback,
     remainingMs,
     popups,
     outcome,

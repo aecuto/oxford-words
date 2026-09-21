@@ -153,6 +153,9 @@ function RoomPage() {
         onAnswer={submit}
         onPlayWord={() => playWordAudio(view.word?.pronounce)}
         onExit={() => router.push("/")}
+        onViewResult={() =>
+          router.push(`/result?outcome=${view.outcome}&mode=room`)
+        }
       />
     </div>
   );

@@ -29,7 +29,7 @@ export function isCritReady(streak: number): boolean {
 
 export function computeHit(
   elapsedMs: number,
-  streakBefore: number
+  streakBefore: number,
 ): { damage: number; crit: boolean } | null {
   if (elapsedMs >= TURN_MS) return null;
   const streakAfter = streakBefore + 1;
@@ -39,7 +39,10 @@ export function computeHit(
 }
 
 export function deriveHp(incomingHits: Hit[]): number {
-  return Math.max(0, MAX_HP - incomingHits.reduce((sum, h) => sum + h.damage, 0));
+  return Math.max(
+    0,
+    MAX_HP - incomingHits.reduce((sum, h) => sum + h.damage, 0),
+  );
 }
 
 export function clampElapsed(ms: number): number {

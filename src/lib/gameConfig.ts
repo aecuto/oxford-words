@@ -25,6 +25,8 @@ export const SOLO_BOT = {
   hit: 10,
 } as const;
 
+export const WRONG_ANSWER_HIT = SOLO_BOT.hit;
+
 export const COLLECTION = "oxfordwords_rooms";
 export const PROGRESS_COLLECTION = "oxfordwords_progress";
 

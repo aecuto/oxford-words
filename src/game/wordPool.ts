@@ -55,7 +55,7 @@ export function buildBattleWord(word: Word, pool: Word[]): BattleWord {
 export function mergeWordLists(
   a: BattleWord[],
   b: BattleWord[],
-  count: number
+  count: number,
 ): BattleWord[] {
   const merged: BattleWord[] = [];
   const seen = new Set<string>();
@@ -86,7 +86,7 @@ const NEW_VERB_RATIO = 0.5;
 export function pickBattleWords(
   pool: Word[],
   count: number = WORDS_PER_BATTLE,
-  stats: WordStats = {}
+  stats: WordStats = {},
 ): BattleWord[] {
   const now = Date.now();
   const due: Word[] = [];
@@ -98,13 +98,15 @@ export function pickBattleWords(
     else if (isDue(s, now)) due.push(w);
     else scheduled.push(w);
   }
-  shuffle(due);
-  shuffle(fresh);
-  shuffle(scheduled);
+  // lodash shuffle returns a new array, so capture the results — these decide
+  // WHICH words are picked, not just their display order.
+  const dueShuffled = shuffle(due);
+  const freshShuffled = shuffle(fresh);
+  const scheduledShuffled = shuffle(scheduled);
 
-  const need = Math.max(0, count - due.length);
-  const verbs = fresh.filter((w) => isVerbType(w.type));
-  const others = fresh.filter((w) => !isVerbType(w.type));
+  const need = Math.max(0, count - dueShuffled.length);
+  const verbs = freshShuffled.filter((w) => isVerbType(w.type));
+  const others = freshShuffled.filter((w) => !isVerbType(w.type));
   const verbQuota = Math.min(verbs.length, Math.ceil(need * NEW_VERB_RATIO));
   const newHead = shuffle([
     ...verbs.splice(0, verbQuota),
@@ -112,10 +114,12 @@ export function pickBattleWords(
   ]);
   const newTail = shuffle([...verbs, ...others]);
 
-  const picked = [...due, ...newHead, ...newTail, ...scheduled].slice(
-    0,
-    count
-  );
+  const picked = [
+    ...dueShuffled,
+    ...newHead,
+    ...newTail,
+    ...scheduledShuffled,
+  ].slice(0, count);
   return shuffle(picked).map((w) => buildBattleWord(w, pool));
 }
 

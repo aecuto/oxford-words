@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { computeHit, clampElapsed, deriveHp } from "../game/damage";
-import { feedbackFor, type Feedback } from "../game/feedback";
 import {
   advanceWord,
   endGame,
@@ -21,7 +20,7 @@ import type {
   Popup,
   SlotKey,
 } from "../game/types";
-import { TURN_GRACE_MS, TURN_MS, WORDS_PER_BATTLE } from "../lib/gameConfig";
+import { TURN_GRACE_MS, TURN_MS, WORDS_PER_BATTLE, WRONG_ANSWER_HIT } from "../lib/gameConfig";
 import { describeAuthError, ensureAnonAuth } from "../lib/firebase";
 import { useCountdown } from "./useCountdown";
 import { useDamagePopups } from "./useDamagePopups";
@@ -34,6 +33,15 @@ import {
 } from "../game/wordProgress";
 
 export type BattleOutcome = "win" | "lose" | "draw" | null;
+
+function penaltyHit(wordIndex: number): Hit {
+  return {
+    wordIndex,
+    damage: WRONG_ANSWER_HIT,
+    crit: false,
+    at: Date.now(),
+  };
+}
 
 export type BattleView = {
   myName: string;
@@ -48,7 +56,6 @@ export type BattleView = {
   wordResults?: (boolean | null)[];
   selected: string | null;
   answerState: AnswerState;
-  feedback: Feedback | null;
   waitingOpp: boolean;
   remainingMs: number;
   popups: Popup[];
@@ -59,7 +66,6 @@ export function useBattleRoom(code: string) {
   const [room, setRoom] = useState<ClientRoom | null>(null);
   const [uid, setUid] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [needsJoin, setNeedsJoin] = useState(false);
   const [joining, setJoining] = useState(false);
   const { popups, spawnPopup } = useDamagePopups();
@@ -314,18 +320,11 @@ export function useBattleRoom(code: string) {
         key,
         { wordIndex: r.wordIndex, answer: "", correct: false, at: Date.now() },
         null,
-        0
+        0,
+        penaltyHit(r.wordIndex)
       )
     );
   }, [remainingMs, room, slotKey, uid, acting]);
-
-  const feedbackResetKey = `${room?.wordIndex ?? "-"}|${room?.status ?? "-"}`;
-  const [prevFeedbackResetKey, setPrevFeedbackResetKey] =
-    useState(feedbackResetKey);
-  if (prevFeedbackResetKey !== feedbackResetKey) {
-    setPrevFeedbackResetKey(feedbackResetKey);
-    setFeedback(null);
-  }
 
   const submit = useCallback(
     async (answer: string | null) => {
@@ -351,6 +350,7 @@ export function useBattleRoom(code: string) {
       const streak = correct ? my.streak + 1 : 0;
 
       let hit: Hit | null = null;
+      let oppHit: Hit | null = null;
       if (correct) {
         const res = computeHit(elapsed, my.streak);
         if (res) {
@@ -361,6 +361,8 @@ export function useBattleRoom(code: string) {
             at: Date.now(),
           };
         }
+      } else {
+        oppHit = penaltyHit(r.wordIndex);
       }
 
       const lastAnswer: LastAnswer = {
@@ -371,15 +373,7 @@ export function useBattleRoom(code: string) {
       };
       resultsRef.current.push({ word: current.word, correct });
 
-      setFeedback(
-        feedbackFor(
-          correct ? "correct" : timeout ? "timeout" : "wrong",
-          hit?.crit ?? false,
-          hit?.damage ?? 0
-        )
-      );
-
-      await submitAnswer(r.code, key, lastAnswer, hit, streak).catch((e) => {
+      await submitAnswer(r.code, key, lastAnswer, hit, streak, oppHit).catch((e) => {
         console.error("battle:submit", e);
         submittedWordRef.current = -1;
       });
@@ -428,6 +422,7 @@ export function useBattleRoom(code: string) {
       wordTotal: room.words.length,
       wordResults: room.words.map((_, i) => {
         if (my.hits.some((h) => h.wordIndex === i)) return true;
+        if (opp?.hits.some((h) => h.wordIndex === i)) return false;
         if (i === room.wordIndex) {
           return answeredCurrent ? my.lastAnswer!.correct : null;
         }
@@ -435,13 +430,12 @@ export function useBattleRoom(code: string) {
       }),
       selected: answeredCurrent ? my.lastAnswer!.answer : null,
       answerState,
-      feedback,
       waitingOpp: answeredCurrent && !oppAnswered && room.status === "playing",
       remainingMs,
       popups,
       outcome,
     };
-  }, [room, slotKey, feedback, remainingMs, popups]);
+  }, [room, slotKey, remainingMs, popups]);
 
   useEffect(() => {
     if (room?.status === "playing") liveSeenRef.current = true;
