@@ -253,6 +253,9 @@ export function useBattleRoom(code: string) {
   useEffect(() => {
     const r = room;
     if (!r || !isHost) return;
+    // First game only: rematches start from the rematchRoom transaction once
+    // both players press Play again, never from this auto-start.
+    if (r.rematchReady?.p1 || r.rematchReady?.p2) return;
     if (r.status === "waiting" && r.players.p2 != null) {
       void acting("start", async () => {
         const merged = mergeWordLists(
@@ -482,6 +485,7 @@ export function useBattleRoom(code: string) {
       outcome,
       mode: "room",
       opponent: room.players[oppKey]?.name ?? undefined,
+      roomCode: room.code,
       total: room.words.length,
       answered: words.length,
       correct: words.filter((w) => w.correct).length,
@@ -499,8 +503,21 @@ export function useBattleRoom(code: string) {
     }
   }, [view, room, slotKey]);
 
+  // Player pressed Play again on the result page: the rematch starts as soon
+  // as the opponent presses it too — show a waiting screen until then.
+  const rematchWaiting =
+    room?.status === "ended" && !!slotKey && !!room.rematchReady?.[slotKey];
+
   return {
-    phase: error ? "error" : needsJoin ? "join" : !view ? "loading" : room!.status,
+    phase: error
+      ? "error"
+      : needsJoin
+        ? "join"
+        : !view
+          ? "loading"
+          : rematchWaiting
+            ? "rematch"
+            : room!.status,
     error,
     view,
     submit,

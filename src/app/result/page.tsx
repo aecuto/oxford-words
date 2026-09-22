@@ -7,10 +7,16 @@ import { SpeakerWaveIcon } from "@heroicons/react/24/solid";
 import { Button } from "../components/ui/Button";
 import { Card, CardBody } from "../components/ui/Card";
 import { playWordAudio } from "../playWordAudio";
+import { useStoredName } from "../useStoredName";
 import {
   loadBattleSummary,
   type BattleSummary,
 } from "../../game/battleSummary";
+import { rematchRoom } from "../../game/roomService";
+import { loadWordPool, pickBattleWords } from "../../game/wordPool";
+import { loadWordStats } from "../../game/wordProgress";
+import { WORDS_PER_BATTLE } from "../../lib/gameConfig";
+import { describeAuthError, ensureAnonAuth } from "../../lib/firebase";
 
 const RESULT_TEXT = {
   win: { title: "VICTORY", color: "text-emerald-500" },
@@ -71,6 +77,8 @@ function ResultPage() {
   const searchParams = useSearchParams();
 
   const [summary, setSummary] = useState<BattleSummary | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot: read session storage after mount to avoid SSR/hydration mismatch */
@@ -85,6 +93,31 @@ function ResultPage() {
     parseDifficulty(searchParams.get("difficulty"));
 
   const playAgain = () => router.push("/solo");
+
+  // PvP: reopen the same room for a rematch — no code typing. rematchRoom
+  // resets it only if the battle has ended; the host client then auto-starts
+  // once both players are back on the room page.
+  const playAgainRoom = async () => {
+    const code = summary?.roomCode;
+    if (!code) {
+      router.push("/");
+      return;
+    }
+    setCreateError(null);
+    setCreating(true);
+    try {
+      const uid = await ensureAnonAuth();
+      const pool = await loadWordPool();
+      const words = pickBattleWords(pool, WORDS_PER_BATTLE, loadWordStats());
+      await rematchRoom(code, uid, words);
+      router.push(`/battle/room?id=${code}`);
+    } catch (e) {
+      console.error(e);
+      setCreateError(describeAuthError(e));
+      setCreating(false);
+    }
+  };
+
   const backToLobby = () => router.push("/");
 
   if (!outcome) {
@@ -153,9 +186,9 @@ function ResultPage() {
                 Review these words
               </p>
               <ul>
-                {missed.map((m) => (
+                {missed.map((m, i) => (
                   <li
-                    key={m.word}
+                    key={`${m.word}-${i}`}
                     className="py-2 border-b border-gray-800/60 last:border-b-0"
                   >
                     <button
@@ -184,6 +217,22 @@ function ResultPage() {
             <Button onClick={playAgain} className="sm:text-lg sm:py-3.5">
               Play again
             </Button>
+          )}
+          {mode === "room" && (
+            <>
+              <Button
+                onClick={playAgainRoom}
+                disabled={creating}
+                className="sm:text-lg sm:py-3.5"
+              >
+                {creating ? "Creating room..." : "Play again"}
+              </Button>
+              {createError && (
+                <p className="text-xs text-red-400 text-center break-words">
+                  {createError}
+                </p>
+              )}
+            </>
           )}
           <Button
             onClick={backToLobby}

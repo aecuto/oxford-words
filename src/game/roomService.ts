@@ -3,6 +3,7 @@ import {
   doc,
   getDoc,
   onSnapshot,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -14,8 +15,10 @@ import {
   MAX_WORDS_PER_ROOM,
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LEN,
+  WORDS_PER_BATTLE,
 } from "../lib/gameConfig";
 import { getFirebase } from "../lib/firebase";
+import { mergeWordLists } from "./wordPool";
 import type { BattleWord, Hit, LastAnswer, RoomDoc, SlotKey, Winner } from "./types";
 import type { ClientRoom, PlayerSlot } from "./types";
 
@@ -65,6 +68,7 @@ export async function createRoom(
       turnStartedAt: null,
       players: { p1: newSlot(uid, name, []), p2: null },
       winner: null,
+      rematchReady: { p1: false, p2: false },
     };
     await setDoc(ref, room);
     return code;
@@ -149,5 +153,76 @@ export async function endGame(code: string, winner: Winner): Promise<void> {
   await updateDoc(roomRef(code), {
     status: "ended",
     winner,
+  });
+}
+
+// Rematch on the same code, gated on BOTH players pressing Play again.
+// Each click marks that player ready (status stays "ended" meanwhile so the
+// battle screen keeps rendering until the rematch is mutual). When the second
+// player clicks, this transaction resets state, merges both players' fresh
+// word lists and flips straight into "playing" — both room pages (each player
+// navigates back here after clicking) see the new battle at the same time.
+export async function rematchRoom(
+  code: string,
+  uid: string,
+  words: BattleWord[]
+): Promise<void> {
+  const sliced = words.slice(0, MAX_WORDS_PER_ROOM);
+  const { fs } = getFirebase();
+  const ref = roomRef(code) as DocumentReference<RoomDoc>;
+  await runTransaction(fs, async (tx) => {
+    const snap = await tx.get(ref);
+    const room = snap.data();
+    if (!room) return;
+    const slotKey: SlotKey | null =
+      room.players.p1?.uid === uid
+        ? "p1"
+        : room.players.p2?.uid === uid
+          ? "p2"
+          : null;
+    if (!slotKey) return;
+    if (room.status === "playing") return;
+    if (room.status !== "ended") return;
+
+    const oppKey: SlotKey = slotKey === "p1" ? "p2" : "p1";
+    const myReady = { ...(room.rematchReady ?? { p1: false, p2: false }) };
+    myReady[slotKey] = true;
+    const oppReady = myReady[oppKey];
+    const oppPresent = room.players[oppKey] != null;
+
+    if (!oppReady || !oppPresent) {
+      // First player in — just mark ready and wait for the other.
+      tx.update(ref, {
+        [`rematchReady.${slotKey}`]: true,
+        [`players.${slotKey}.words`]: sliced,
+      });
+      return;
+    }
+
+    // Both ready — reset and start immediately.
+    const p1Words =
+      room.players.p1?.words && room.players.p1.words.length > 0
+        ? room.players.p1.words
+        : room.words;
+    const p2Words = room.players.p2?.words ?? [];
+    const merged = mergeWordLists(
+      p1Words,
+      p2Words,
+      p1Words.length || WORDS_PER_BATTLE
+    );
+    tx.update(ref, {
+      status: "playing",
+      winner: null,
+      wordIndex: 0,
+      turnStartedAt: serverTimestamp(),
+      words: merged,
+      rematchReady: { p1: false, p2: false },
+      "players.p1.hits": [],
+      "players.p1.streak": 0,
+      "players.p1.lastAnswer": null,
+      "players.p2.hits": [],
+      "players.p2.streak": 0,
+      "players.p2.lastAnswer": null,
+    });
   });
 }

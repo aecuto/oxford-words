@@ -66,6 +66,7 @@ export type RoomDoc = {
   turnStartedAt: Timestamp | null;
   players: Record<SlotKey, PlayerSlot | null>;
   winner: Winner | null;
+  rematchReady?: Record<SlotKey, boolean>;
 };
 
 export type ClientRoom = Omit<RoomDoc, "turnStartedAt"> & {

@@ -15,6 +15,7 @@ export type BattleSummary = {
   mode: "solo" | "room";
   difficulty?: "easy" | "hard";
   opponent?: string;
+  roomCode?: string;
   total: number;
   answered: number;
   correct: number;

@@ -144,6 +144,38 @@ function RoomPage() {
     );
   }
 
+  if (phase === "rematch") {
+    return (
+      <Center>
+        <Card className="w-full max-w-sm animate-popIn">
+          <CardBody className="text-center space-y-3 p-5 sm:p-6">
+            <p className="text-sm font-black uppercase tracking-widest text-gray-500">
+              Rematch
+            </p>
+            <p className="text-2xl sm:text-3xl font-black">You are ready!</p>
+            <p className="text-sm text-gray-400">
+              Waiting for your opponent to press Play again...
+            </p>
+            <div className="flex items-center justify-center gap-1.5 pt-1" aria-hidden>
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="h-2 w-2 rounded-full bg-blue-400 animate-bounce"
+                  style={{ animationDelay: `${i * 150}ms` }}
+                />
+              ))}
+            </div>
+            <div className="flex flex-col gap-2 pt-1">
+              <Button onClick={() => router.push("/")} variant="gray">
+                Leave room
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
+      </Center>
+    );
+  }
+
   return (
     <div className="dark min-h-dvh pt-safe pb-safe">
       <BattleScreen
