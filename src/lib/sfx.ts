@@ -1,7 +1,7 @@
 const SFX_URLS = {
   hit: `https://www.myinstants.com/media/sounds/punch-notification_sound-493565.mp3`,
   crit: `https://www.myinstants.com/media/sounds/extremem-punch.mp3`,
-  hurt: `https://www.myinstants.com/media/sounds/sword-slash_NkdUSLZ.mp3`,
+  hurt: `https://www.myinstants.com/media/sounds/bone-crack.mp3`,
   win: `https://www.myinstants.com/media/sounds/award-winners-fanfare.mp3`,
   lose: `https://www.myinstants.com/media/sounds/070-challenge-lose.mp3`,
   draw: `https://www.myinstants.com/media/sounds/12_3.mp3`,
