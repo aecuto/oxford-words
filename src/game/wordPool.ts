@@ -3,7 +3,7 @@ import wordsJson from "../../translator/words.th.json";
 import type { Word } from "./types";
 import { WORDS_PER_BATTLE } from "../lib/gameConfig";
 import type { BattleWord } from "./types";
-import { isDue, type WordStats } from "./wordProgress";
+import { isDue, type WordStat, type WordStats } from "./wordProgress";
 
 const typeMap: Record<string, string> = {
   noun: "N",
@@ -73,15 +73,49 @@ export function mergeWordLists(
   return merged;
 }
 
-// Pick order: due words first (wrong answers are due immediately, correct
-// answers resurface after twice the previous interval), then new words, then
-// words not due yet. Within new words, half the slots are verb-first so
-// drilling stays varied without becoming monotonous.
+// Pick rules, ordered for fastest learning:
+// 1. Review: due words first, hardest/most-overdue first — leeches (2+ wrong),
+//    then high error rate, then words overdue relative to their interval.
+// 2. Review cap: reviews fill at most REVIEW_MAX_RATIO of the battle so new
+//    words keep flowing even during heavy review days.
+// 3. New words follow Oxford level order (A1 → A2 → B1 → B2 → C1), so the
+//    foundation is built before harder vocabulary; random within a level.
+// 4. Verb variety: half of the new-word slots prefer verbs so drilling stays
+//    varied without becoming monotonous.
+// 5. Fallbacks: overdue-but-capped reviews, then scheduled words ordered by
+//    soonest next due date (near-due beats random).
+const DAY_MS = 86_400_000;
+const REVIEW_MAX_RATIO = 0.7;
+const NEW_VERB_RATIO = 0.5;
+const LEECH_WRONGS = 2;
+const LEECH_BONUS = 10;
+const ERR_RATE_WEIGHT = 3;
+
+const LEVEL_ORDER = ["a1", "a2", "b1", "b2", "c1", "c2"] as const;
+
 function isVerbType(type: string): boolean {
   return type.toLowerCase().includes("verb");
 }
 
-const NEW_VERB_RATIO = 0.5;
+function levelRank(level: string): number {
+  const i = LEVEL_ORDER.indexOf(level.toLowerCase() as (typeof LEVEL_ORDER)[number]);
+  return i === -1 ? LEVEL_ORDER.length : i;
+}
+
+function duePriority(s: WordStat | undefined, now: number): number {
+  if (!s) return 0;
+  const ivlDays = Math.max(s.ivl, 1);
+  const overdueRatio = (now - s.lastSeenAt) / (ivlDays * DAY_MS) - 1;
+  const errRate = s.seen > 0 ? s.wrong / s.seen : 0;
+  let score = overdueRatio + errRate * ERR_RATE_WEIGHT;
+  if (s.wrong >= LEECH_WRONGS) score += LEECH_BONUS;
+  return score;
+}
+
+function nextDueAt(s: WordStat | undefined): number {
+  if (!s) return Infinity;
+  return s.lastSeenAt + Math.max(s.ivl, 1) * DAY_MS;
+}
 
 export function pickBattleWords(
   pool: Word[],
@@ -98,15 +132,22 @@ export function pickBattleWords(
     else if (isDue(s, now)) due.push(w);
     else scheduled.push(w);
   }
-  // lodash shuffle returns a new array, so capture the results — these decide
-  // WHICH words are picked, not just their display order.
-  const dueShuffled = shuffle(due);
-  const freshShuffled = shuffle(fresh);
-  const scheduledShuffled = shuffle(scheduled);
 
-  const need = Math.max(0, count - dueShuffled.length);
-  const verbs = freshShuffled.filter((w) => isVerbType(w.type));
-  const others = freshShuffled.filter((w) => !isVerbType(w.type));
+  const dueSorted = due.sort(
+    (a, b) => duePriority(stats[b.word], now) - duePriority(stats[a.word], now),
+  );
+  const reviewCap = Math.min(dueSorted.length, Math.ceil(count * REVIEW_MAX_RATIO));
+  const headDue = dueSorted.slice(0, reviewCap);
+  const tailDue = dueSorted.slice(reviewCap);
+
+  const ranks = [...new Set(fresh.map((w) => levelRank(w.level)))].sort((a, b) => a - b);
+  const freshOrdered = ranks.flatMap((rank) =>
+    shuffle(fresh.filter((w) => levelRank(w.level) === rank)),
+  );
+
+  const need = Math.max(0, count - headDue.length);
+  const verbs = freshOrdered.filter((w) => isVerbType(w.type));
+  const others = freshOrdered.filter((w) => !isVerbType(w.type));
   const verbQuota = Math.min(verbs.length, Math.ceil(need * NEW_VERB_RATIO));
   const newHead = shuffle([
     ...verbs.splice(0, verbQuota),
@@ -114,11 +155,16 @@ export function pickBattleWords(
   ]);
   const newTail = shuffle([...verbs, ...others]);
 
+  const scheduledSorted = scheduled.sort(
+    (a, b) => nextDueAt(stats[a.word]) - nextDueAt(stats[b.word]),
+  );
+
   const picked = [
-    ...dueShuffled,
+    ...headDue,
     ...newHead,
+    ...tailDue,
     ...newTail,
-    ...scheduledShuffled,
+    ...scheduledSorted,
   ].slice(0, count);
   return shuffle(picked).map((w) => buildBattleWord(w, pool));
 }

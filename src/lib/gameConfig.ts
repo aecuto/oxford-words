@@ -19,11 +19,44 @@ export const DAMAGE = {
 export const CRIT_MULTIPLIER = 2;
 export const STREAK_FOR_CRIT = 3;
 
-export const SOLO_BOT = {
+export type SoloDifficulty = "easy" | "hard";
+
+export type SoloBotConfig = {
+  name: string;
+  hp: number;
+  hit: number;
+  accuracy: number;
+  minThinkMs: number;
+  maxThinkMs: number;
+};
+
+export const SOLO_BOT: SoloBotConfig = {
   name: "BOT",
   hp: 120,
-  hit: 10,
-} as const;
+  // Miss penalty: MAX_HP / hit = 20, so a battle always plays all 20 words
+  // and every answer feeds the SRS loop; skilled runs can still KO the bot.
+  hit: 5,
+  // Occasionally answers back with slow, low-tier hits (~1 in 10 words).
+  accuracy: 0.1,
+  minThinkMs: 4_000,
+  maxThinkMs: 8_500,
+};
+
+// Hard bot answers every word like a real player: computeHit(thinkMs, streak)
+// decides its damage tier/crits, and its own misses cost it WRONG_ANSWER_HIT.
+// Tuned so a 75%-correct player wins ~1 of 3 battles and experts ~9 of 10.
+export const SOLO_BOT_HARD: SoloBotConfig = {
+  name: "PROF",
+  hp: 120,
+  hit: SOLO_BOT.hit,
+  accuracy: 0.7,
+  minThinkMs: 2_200,
+  maxThinkMs: 6_500,
+};
+
+export function botConfigFor(difficulty: SoloDifficulty): SoloBotConfig {
+  return difficulty === "hard" ? SOLO_BOT_HARD : SOLO_BOT;
+}
 
 export const WRONG_ANSWER_HIT = SOLO_BOT.hit;
 

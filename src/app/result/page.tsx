@@ -1,9 +1,16 @@
 "use client";
 
-import { Suspense, type ReactNode } from "react";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { cx } from "@emotion/css";
+import { SpeakerWaveIcon } from "@heroicons/react/24/solid";
 import { Button } from "../components/ui/Button";
+import { Card, CardBody } from "../components/ui/Card";
+import { playWordAudio } from "../playWordAudio";
+import {
+  loadBattleSummary,
+  type BattleSummary,
+} from "../../game/battleSummary";
 
 const RESULT_TEXT = {
   win: { title: "VICTORY", color: "text-emerald-500" },
@@ -11,13 +18,8 @@ const RESULT_TEXT = {
   draw: { title: "DRAW", color: "text-amber-500" },
 } as const;
 
-const MODE_DETAIL = {
-  solo: "Solo battle vs BOT",
-  room: "Online battle",
-} as const;
-
 type Outcome = keyof typeof RESULT_TEXT;
-type Mode = keyof typeof MODE_DETAIL;
+type Mode = "solo" | "room";
 
 function Shell({ children }: { children: ReactNode }) {
   return (
@@ -28,18 +30,59 @@ function Shell({ children }: { children: ReactNode }) {
 }
 
 function parseOutcome(param: string | null): Outcome | null {
-  return param && param in RESULT_TEXT ? (param as Outcome) : null;
+  return param === "win" || param === "lose" || param === "draw"
+    ? param
+    : null;
 }
 
 function parseMode(param: string | null): Mode | null {
-  return param && param in MODE_DETAIL ? (param as Mode) : null;
+  return param === "solo" || param === "room" ? param : null;
+}
+
+function parseDifficulty(param: string | null): "easy" | "hard" | null {
+  return param === "easy" || param === "hard" ? param : null;
+}
+
+function Stat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string | number;
+  tone: string;
+}) {
+  return (
+    <div className="min-w-0 px-1 rounded-lg bg-gray-800/60 py-2 text-center">
+      <div
+        className={`text-lg sm:text-xl font-black tabular-nums truncate ${tone}`}
+      >
+        {value}
+      </div>
+      <div className="text-xs uppercase tracking-wider text-gray-500 truncate">
+        {label}
+      </div>
+    </div>
+  );
 }
 
 function ResultPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const outcome = parseOutcome(searchParams.get("outcome"));
-  const mode = parseMode(searchParams.get("mode"));
+
+  const [summary, setSummary] = useState<BattleSummary | null>(null);
+
+  useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot: read session storage after mount to avoid SSR/hydration mismatch */
+    setSummary(loadBattleSummary());
+  }, []);
+
+  const outcome =
+    summary?.outcome ?? parseOutcome(searchParams.get("outcome"));
+  const mode = summary?.mode ?? parseMode(searchParams.get("mode"));
+  const difficulty =
+    summary?.difficulty ??
+    parseDifficulty(searchParams.get("difficulty"));
 
   const playAgain = () => router.push("/solo");
   const backToLobby = () => router.push("/");
@@ -53,27 +96,90 @@ function ResultPage() {
   }
 
   const result = RESULT_TEXT[outcome];
+  const accuracy =
+    summary && summary.answered > 0
+      ? Math.round((summary.correct / summary.answered) * 100)
+      : null;
+
+  let modeLine: string | null = null;
+  if (mode === "solo") {
+    const vs = summary?.opponent ?? "BOT";
+    modeLine = `Solo battle vs ${vs}${difficulty ? ` · ${difficulty.toUpperCase()}` : ""}`;
+  } else if (mode === "room") {
+    modeLine = summary?.opponent
+      ? `Online battle vs ${summary.opponent}`
+      : "Online battle";
+  }
+
+  const missed = (summary?.words ?? []).filter((w) => !w.correct);
 
   return (
     <Shell>
-      <div className="flex flex-col items-center animate-popIn">
-        <p className="text-xs sm:text-sm font-black uppercase tracking-[0.3em] text-gray-500">
-          Battle over
-        </p>
+      <div className="flex flex-col items-center w-full animate-popIn">
         <h1
           className={cx(
-            "text-6xl sm:text-8xl font-black tracking-widest mt-2 select-none",
+            "text-6xl sm:text-8xl font-black tracking-widest select-none",
             result.color
           )}
         >
           {result.title}
         </h1>
-        {mode && (
-          <p className="text-xs sm:text-sm uppercase tracking-widest text-gray-400 mt-4">
-            {MODE_DETAIL[mode]}
+        {modeLine && (
+          <p className="text-xs sm:text-sm uppercase tracking-widest text-gray-400 mt-3">
+            {modeLine}
           </p>
         )}
-        <div className="flex flex-col gap-3 w-full max-w-xs mt-10 sm:mt-12">
+
+        {summary && summary.answered > 0 && (
+          <div className="grid grid-cols-3 gap-2 w-full max-w-xs mt-8">
+            <Stat
+              label="Correct"
+              value={`${summary.correct}/${summary.answered}`}
+              tone="text-emerald-400"
+            />
+            <Stat label="Accuracy" value={`${accuracy}%`} tone="text-blue-400" />
+            <Stat
+              label="Best streak"
+              value={summary.bestStreak}
+              tone="text-amber-400"
+            />
+          </div>
+        )}
+
+        {missed.length > 0 && (
+          <Card className="w-full max-w-sm mt-4">
+            <CardBody className="p-4">
+              <p className="text-xs font-black uppercase tracking-wider text-gray-500 mb-2">
+                Review these words
+              </p>
+              <ul>
+                {missed.map((m) => (
+                  <li
+                    key={m.word}
+                    className="py-2 border-b border-gray-800/60 last:border-b-0"
+                  >
+                    <button
+                      onClick={() => playWordAudio(m.pronounce)}
+                      className="inline-flex items-center gap-1.5 text-sm font-bold text-gray-700 dark:text-gray-200 hover:text-blue-500 dark:hover:text-blue-400 transition-colors touch-manipulation select-none"
+                    >
+                      {m.word}
+                      {m.pronounce && (
+                        <SpeakerWaveIcon className="h-3.5 w-3.5 opacity-60" />
+                      )}
+                    </button>
+                    {m.answer && (
+                      <p className="mt-0.5 break-words text-sm text-blue-600 dark:text-blue-400">
+                        {m.answer}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </CardBody>
+          </Card>
+        )}
+
+        <div className="flex flex-col gap-3 w-full max-w-xs mt-8">
           {mode === "solo" && (
             <Button onClick={playAgain} className="sm:text-lg sm:py-3.5">
               Play again

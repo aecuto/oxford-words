@@ -31,6 +31,7 @@ import {
   saveWordResults,
   type WordResult,
 } from "../game/wordProgress";
+import { saveBattleSummary, type BattleWordDetail } from "../game/battleSummary";
 
 export type BattleOutcome = "win" | "lose" | "draw" | null;
 
@@ -79,6 +80,10 @@ export function useBattleRoom(code: string) {
   const liveSeenRef = useRef(false);
   const recordedRoomRef = useRef<string | null>(null);
   const resultsRef = useRef<WordResult[]>([]);
+  const bestStreakRef = useRef(0);
+  const wordDetailsRef = useRef<
+    { wordIndex: number; word: string; correct: boolean }[]
+  >([]);
 
   useEffect(() => {
     roomRef.current = room;
@@ -313,6 +318,11 @@ export function useBattleRoom(code: string) {
     const timedOutWord = r.words[r.wordIndex];
     if (timedOutWord) {
       resultsRef.current.push({ word: timedOutWord.word, correct: false });
+      wordDetailsRef.current.push({
+        wordIndex: r.wordIndex,
+        word: timedOutWord.word,
+        correct: false,
+      });
     }
     void acting(`timeout-${r.wordIndex}`, () =>
       submitAnswer(
@@ -348,6 +358,7 @@ export function useBattleRoom(code: string) {
       const timeout = answer == null;
       const correct = !timeout && answer === current.correctAnswer;
       const streak = correct ? my.streak + 1 : 0;
+      if (streak > bestStreakRef.current) bestStreakRef.current = streak;
 
       let hit: Hit | null = null;
       let oppHit: Hit | null = null;
@@ -372,6 +383,11 @@ export function useBattleRoom(code: string) {
         at: Date.now(),
       };
       resultsRef.current.push({ word: current.word, correct });
+      wordDetailsRef.current.push({
+        wordIndex: r.wordIndex,
+        word: current.word,
+        correct,
+      });
 
       await submitAnswer(r.code, key, lastAnswer, hit, streak, oppHit).catch((e) => {
         console.error("battle:submit", e);
@@ -447,6 +463,33 @@ export function useBattleRoom(code: string) {
     if (!liveSeenRef.current) return;
     if (recordedRoomRef.current === room.code) return;
     recordedRoomRef.current = room.code;
+    const oppKey: SlotKey = slotKey === "p1" ? "p2" : "p1";
+    const myHits = room.players[slotKey]?.hits ?? [];
+    const oppHits = room.players[oppKey]?.hits ?? [];
+    const words: BattleWordDetail[] = wordDetailsRef.current.map((d) => ({
+      word: d.word,
+      pronounce: room.words.find((w) => w.word === d.word)?.pronounce,
+      answer: room.words.find((w) => w.word === d.word)?.correctAnswer,
+      correct: d.correct,
+      dealt: myHits
+        .filter((h) => h.wordIndex === d.wordIndex)
+        .reduce((sum, h) => sum + h.damage, 0),
+      taken: oppHits
+        .filter((h) => h.wordIndex === d.wordIndex)
+        .reduce((sum, h) => sum + h.damage, 0),
+    }));
+    saveBattleSummary({
+      outcome,
+      mode: "room",
+      opponent: room.players[oppKey]?.name ?? undefined,
+      total: room.words.length,
+      answered: words.length,
+      correct: words.filter((w) => w.correct).length,
+      bestStreak: bestStreakRef.current,
+      damageDealt: words.reduce((sum, w) => sum + w.dealt, 0),
+      damageTaken: words.reduce((sum, w) => sum + w.taken, 0),
+      words,
+    });
     recordResult(outcome, room.players[slotKey]?.streak ?? 0).catch((e) =>
       console.error("progress:record", e)
     );
