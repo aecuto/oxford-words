@@ -117,7 +117,7 @@ export function ProgressPanel() {
               Today
             </span>
             <span className="text-xs text-gray-400 tabular-nums">
-              {daily?.correct ?? 0} / {DAILY_GOAL_CORRECT} correct
+              {daily?.correct ?? 0} / {DAILY_GOAL_CORRECT} unique correct
             </span>
           </div>
           <div className="h-2 rounded-full bg-gray-800 overflow-hidden">
@@ -139,9 +139,7 @@ export function ProgressPanel() {
         {showRecord && (
           <div className="mt-4 pt-3 border-t border-gray-800 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-gray-400">
             <span>{record!.games} battles</span>
-            <span className="text-emerald-400 font-bold">
-              {record!.wins}W
-            </span>
+            <span className="text-emerald-400 font-bold">{record!.wins}W</span>
             <span className="text-red-400 font-bold">{record!.losses}L</span>
             {record!.draws > 0 && <span>{record!.draws}D</span>}
             <span>best streak {record!.bestStreak}</span>

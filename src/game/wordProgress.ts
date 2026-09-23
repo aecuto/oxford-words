@@ -17,6 +17,7 @@ export type DailyProgress = {
   correct: number;
   met: boolean;
   streak: number;
+  correctWords?: string[];
 };
 
 const KEY = "solo:wordStats:v1";
@@ -59,19 +60,28 @@ export function loadDailyProgress(): DailyProgress {
   return { date: "", correct: 0, met: false, streak: 0 };
 }
 
-function bumpDaily(correct: boolean): DailyProgress {
+function bumpDaily(word: string, correct: boolean): DailyProgress {
   const prev = loadDailyProgress();
   const today = dayKey(Date.now());
   let next: DailyProgress;
   if (prev.date === today) {
-    next = { ...prev, correct: prev.correct + (correct ? 1 : 0) };
+    next = { ...prev };
   } else {
     const yesterday = dayKey(Date.now() - DAY_MS);
     next = {
       date: today,
-      correct: correct ? 1 : 0,
+      correct: 0,
       met: false,
       streak: prev.met && prev.date === yesterday ? prev.streak : 0,
+      correctWords: [],
+    };
+  }
+  const correctWords = next.correctWords ?? [];
+  if (correct && !correctWords.includes(word)) {
+    next = {
+      ...next,
+      correct: next.correct + 1,
+      correctWords: [...correctWords, word],
     };
   }
   if (!next.met && next.correct >= DAILY_GOAL_CORRECT) {
@@ -103,7 +113,7 @@ export function saveWordResults(results: WordResult[]): WordStats {
       lastSeenAt: now,
       ivl: nextIvl(prev, r.correct),
     };
-    bumpDaily(r.correct);
+    bumpDaily(r.word, r.correct);
   }
   try {
     window.localStorage.setItem(KEY, JSON.stringify(stats));
