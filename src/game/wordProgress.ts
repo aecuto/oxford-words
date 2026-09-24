@@ -39,6 +39,13 @@ export function isDue(stat: WordStat | undefined, now: number): boolean {
   return now >= stat.lastSeenAt + (stat.ivl ?? 0) * DAY_MS;
 }
 
+// Mastered = answered correctly more often than wrongly; everything else is
+// still learning. Shared by the lobby progress panel and the /words page so
+// both always agree on the split.
+export function isMastered(stat: WordStat | undefined): boolean {
+  return !!stat && stat.correct > stat.wrong;
+}
+
 function nextIvl(prev: WordStat | undefined, correct: boolean): number {
   if (!correct) return 0;
   const cur = prev?.ivl ?? 0;

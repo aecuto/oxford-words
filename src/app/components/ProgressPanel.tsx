@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Card, CardBody } from "./ui/Card";
 import { DailyGoal } from "./DailyGoal";
 import { loadWordPool } from "../../game/wordPool";
 import {
   currentDailyProgress,
+  isMastered,
   loadWordStats,
   type DailyProgress,
   type WordStats,
@@ -77,7 +79,7 @@ export function ProgressPanel() {
   }, []);
 
   const entries = Object.values(stats);
-  const mastered = entries.filter((s) => s.correct > s.wrong).length;
+  const mastered = entries.filter((s) => isMastered(s)).length;
   const seen = entries.length;
   const learning = seen - mastered;
   const showRecord = record != null && record.games > 0;
@@ -89,9 +91,12 @@ export function ProgressPanel() {
           <h2 className="text-base sm:text-lg font-black tracking-wide text-gray-200">
             PROGRESS
           </h2>
-          <span className="text-xs text-gray-500 tabular-nums">
-            {seen} / {poolTotal} words seen
-          </span>
+          <Link
+            href="/words"
+            className="text-xs text-gray-500 tabular-nums hover:text-blue-400 transition-colors"
+          >
+            {seen} / {poolTotal} words seen · view →
+          </Link>
         </div>
 
         <div className="h-2 rounded-full bg-gray-800 overflow-hidden flex mb-4">
@@ -106,13 +111,19 @@ export function ProgressPanel() {
         </div>
 
         <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-          <Stat label="Mastered" value={mastered} tone="text-emerald-400" />
-          <Stat label="Learning" value={learning} tone="text-blue-400" />
-          <Stat
-            label="Seen"
-            value={`${seen}/${poolTotal}`}
-            tone="text-gray-300"
-          />
+          <Link href="/words?filter=mastered" className="block">
+            <Stat label="Known" value={mastered} tone="text-emerald-400" />
+          </Link>
+          <Link href="/words?filter=learning" className="block">
+            <Stat label="Study" value={learning} tone="text-blue-400" />
+          </Link>
+          <Link href="/words" className="block">
+            <Stat
+              label="Seen"
+              value={`${seen}/${poolTotal}`}
+              tone="text-gray-300"
+            />
+          </Link>
         </div>
 
         <DailyGoal

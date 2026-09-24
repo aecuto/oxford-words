@@ -18,6 +18,9 @@ export function DailyGoal({
 }) {
   const correct = daily?.correct ?? 0;
   const streak = daily?.streak ?? 0;
+  // Blue while the goal is still open, amber once it's hit (matches the
+  // fire-streak color), so an unfinished day never reads as "done".
+  const barTone = daily?.met ? "bg-amber-500" : "bg-blue-500";
 
   return (
     <div className={className}>
@@ -25,22 +28,28 @@ export function DailyGoal({
         <span className="text-[10px] font-black uppercase tracking-wider text-gray-500">
           Today
         </span>
-        <span className="text-xs text-gray-400 tabular-nums">
+        <span
+          className={`text-xs tabular-nums ${
+            daily?.met ? "text-amber-400" : "text-gray-400"
+          }`}
+        >
           {correct} / {DAILY_GOAL_CORRECT} unique correct
         </span>
       </div>
       <div className="h-2 rounded-full bg-gray-800 overflow-hidden">
         <div
-          className="h-full bg-amber-500 transition-all"
+          className={`h-full ${barTone} transition-all`}
           style={{ width: pct(correct, DAILY_GOAL_CORRECT) }}
         />
       </div>
-      {streak > 0 && (
-        <div className="mt-1.5 flex items-center gap-1 text-xs font-bold text-amber-400">
-          <FireIcon className="h-3.5 w-3.5" />
-          {streak}-day streak
-        </div>
-      )}
+      <div
+        className={`mt-1.5 flex items-center gap-1 text-xs font-bold ${
+          streak > 0 ? "text-amber-400" : "text-gray-500"
+        }`}
+      >
+        <FireIcon className="h-3.5 w-3.5" />
+        {streak}-day streak
+      </div>
     </div>
   );
 }
