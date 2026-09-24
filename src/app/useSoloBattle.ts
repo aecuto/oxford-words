@@ -231,6 +231,7 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
       if (current) {
         wordDetailsRef.current.push({
           word: current.word,
+          type: current.type,
           pronounce: current.pronounce,
           answer: current.correctAnswer,
           correct: result === "correct",

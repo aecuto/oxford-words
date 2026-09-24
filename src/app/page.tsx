@@ -10,7 +10,7 @@ import { useStoredName } from "./useStoredName";
 import { pickBattleWords, loadWordPool } from "../game/wordPool";
 import { loadWordStats } from "../game/wordProgress";
 import { createRoom } from "../game/roomService";
-import { SOLO_BOT, WORDS_PER_BATTLE } from "../lib/gameConfig";
+import { WORDS_PER_BATTLE } from "../lib/gameConfig";
 import { describeAuthError, ensureAnonAuth } from "../lib/firebase";
 
 const emptySubscribe = () => () => {};
@@ -142,20 +142,33 @@ export default function BattleHub() {
                 </p>
               </div>
 
-              <div className="flex-1 flex items-center justify-center py-4 sm:py-8">
-                <span className="text-3xl sm:text-5xl font-black text-gray-700 dark:text-gray-700 select-none tracking-widest">
-                  HP {SOLO_BOT.hp}
-                </span>
-              </div>
+              <div className="flex-1" />
 
-              <Link href="/solo" className="mt-auto">
-                <Button
-                  variant="purple"
-                  className="w-full sm:text-lg sm:py-3.5"
-                >
-                  Play
-                </Button>
-              </Link>
+              <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <Link href="/solo?difficulty=easy" className="block">
+                    <Button variant="blue" className="w-full sm:text-lg sm:py-3.5">
+                      Easy
+                    </Button>
+                  </Link>
+                  <p className="text-[10px] sm:text-xs text-gray-500 text-center leading-snug">
+                    BOT · relaxed, answers most words
+                  </p>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Link href="/solo?difficulty=hard" className="block">
+                    <Button
+                      variant="purple"
+                      className="w-full sm:text-lg sm:py-3.5"
+                    >
+                      Hard
+                    </Button>
+                  </Link>
+                  <p className="text-[10px] sm:text-xs text-gray-500 text-center leading-snug">
+                    PROF · fast, hard hits, streak crits
+                  </p>
+                </div>
+              </div>
             </CardBody>
           </Card>
         </div>

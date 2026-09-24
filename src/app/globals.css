@@ -47,6 +47,18 @@ body {
   }
 }
 
+/* Turn timer bar: drains 100% → 0% linearly over the whole turn. CSS-owned
+   so the browser interpolates it at display refresh rate, independent of
+   React re-renders; TimerBar restarts it per turn via a key change. */
+@keyframes timerDrain {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
 .loader {
   width: 50px;
   padding: 8px;

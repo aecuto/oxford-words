@@ -81,7 +81,7 @@ export function useBattleRoom(code: string) {
   const resultsRef = useRef<WordResult[]>([]);
   const bestStreakRef = useRef(0);
   const wordDetailsRef = useRef<
-    { wordIndex: number; word: string; correct: boolean }[]
+    { wordIndex: number; word: string; type?: string; correct: boolean }[]
   >([]);
 
   useEffect(() => {
@@ -327,6 +327,7 @@ export function useBattleRoom(code: string) {
         wordDetailsRef.current.push({
           wordIndex: cur.wordIndex,
           word: timedOutWord.word,
+          type: timedOutWord.type,
           correct: false,
         });
       }
@@ -394,6 +395,7 @@ export function useBattleRoom(code: string) {
       wordDetailsRef.current.push({
         wordIndex: r.wordIndex,
         word: current.word,
+        type: current.type,
         correct,
       });
 
@@ -476,6 +478,7 @@ export function useBattleRoom(code: string) {
     const oppHits = room.players[oppKey]?.hits ?? [];
     const words: BattleWordDetail[] = wordDetailsRef.current.map((d) => ({
       word: d.word,
+      type: d.type,
       pronounce: room.words.find((w) => w.word === d.word)?.pronounce,
       answer: room.words.find((w) => w.word === d.word)?.correctAnswer,
       correct: d.correct,

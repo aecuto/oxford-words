@@ -191,15 +191,22 @@ function ResultPage() {
                     key={`${m.word}-${i}`}
                     className="py-2 border-b border-gray-800/60 last:border-b-0"
                   >
-                    <button
-                      onClick={() => playWordAudio(m.pronounce)}
-                      className="inline-flex items-center gap-1.5 text-sm font-bold text-gray-700 dark:text-gray-200 hover:text-blue-500 dark:hover:text-blue-400 transition-colors touch-manipulation select-none"
-                    >
-                      {m.word}
-                      {m.pronounce && (
-                        <SpeakerWaveIcon className="h-3.5 w-3.5 opacity-60" />
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        onClick={() => playWordAudio(m.pronounce)}
+                        className="inline-flex items-center gap-1.5 text-sm font-bold text-gray-700 dark:text-gray-200 hover:text-blue-500 dark:hover:text-blue-400 transition-colors touch-manipulation select-none"
+                      >
+                        {m.word}
+                        {m.pronounce && (
+                          <SpeakerWaveIcon className="h-3.5 w-3.5 opacity-60" />
+                        )}
+                      </button>
+                      {m.type && (
+                        <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                          {m.type}
+                        </span>
                       )}
-                    </button>
+                    </div>
                     {m.answer && (
                       <p className="mt-0.5 break-words text-sm text-blue-600 dark:text-blue-400">
                         {m.answer}

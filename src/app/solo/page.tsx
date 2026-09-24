@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { useSoloBattle } from "../useSoloBattle";
 import { BattleScreen } from "../components/battle/BattleScreen";
 import { Button } from "../components/ui/Button";
@@ -13,9 +13,31 @@ import {
   type SoloDifficulty,
 } from "../../lib/gameConfig";
 
+// Deep link ?difficulty=easy|hard (lobby VS BOT buttons) skips the picker.
+function parseDifficulty(param: string | null): SoloDifficulty | null {
+  return param === "easy" || param === "hard" ? param : null;
+}
+
 export default function SoloPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="dark flex w-full min-h-dvh items-center justify-center">
+          <div className="loader" />
+        </div>
+      }
+    >
+      <SoloPageInner />
+    </Suspense>
+  );
+}
+
+function SoloPageInner() {
   const router = useRouter();
-  const [difficulty, setDifficulty] = useState<SoloDifficulty | null>(null);
+  const searchParams = useSearchParams();
+  const [difficulty, setDifficulty] = useState<SoloDifficulty | null>(() =>
+    parseDifficulty(searchParams.get("difficulty"))
+  );
 
   if (!difficulty) {
     return (

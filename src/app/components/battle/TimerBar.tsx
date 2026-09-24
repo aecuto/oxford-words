@@ -12,14 +12,15 @@ type TimerBarProps = {
 export function TimerBar({ startedAt, totalMs }: TimerBarProps) {
   // The tick lives here on purpose: state updates 10x/sec, so keeping the
   // countdown in the battle hook re-rendered the whole screen at that rate.
-  // Only this tiny subtree re-renders now.
+  // Only the seconds label and zone color still re-render; the bar itself is
+  // a pure CSS animation (timerDrain) interpolated at display refresh rate.
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (startedAt === null) return;
-    /* eslint-disable-next-line react-hooks/set-state-in-effect -- sync the bar to the new turn's start instead of waiting for the first tick */
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- sync the label to the new turn's start instead of waiting for the first tick */
     setNow(Date.now());
-    // 10 ticks/sec is plenty for the timer bar; a rAF loop re-rendered
+    // 10 ticks/sec is plenty for the label; a rAF loop re-rendered
     // ~60x/sec for no visible difference.
     const id = window.setInterval(() => setNow(Date.now()), 100);
     return () => window.clearInterval(id);
@@ -27,7 +28,6 @@ export function TimerBar({ startedAt, totalMs }: TimerBarProps) {
 
   const remainingMs =
     startedAt === null ? totalMs : Math.max(0, totalMs - (now - startedAt));
-  const ratio = Math.max(0, Math.min(1, remainingMs / totalMs));
   const seconds = Math.ceil(remainingMs / 1000);
   const zone: "fast" | "mid" | "slow" =
     remainingMs > totalMs - HIGH_MS
@@ -42,7 +42,9 @@ export function TimerBar({ startedAt, totalMs }: TimerBarProps) {
   return (
     <div className="flex items-center gap-3">
       <div className="relative flex-1 h-3 rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden border border-gray-300 dark:border-gray-600">
+        {/* key restarts the drain animation at 100% for each new turn */}
         <div
+          key={startedAt ?? "idle"}
           className={cx(
             "h-full rounded-full transition-colors",
             zone === "fast"
@@ -51,7 +53,11 @@ export function TimerBar({ startedAt, totalMs }: TimerBarProps) {
                 ? "bg-amber-500"
                 : "bg-red-500 animate-pulse"
           )}
-          style={{ width: `${ratio * 100}%` }}
+          style={
+            startedAt === null
+              ? { width: "100%" }
+              : { animation: `timerDrain ${totalMs}ms linear forwards` }
+          }
         />
         {marks.map((left) => (
           <span
