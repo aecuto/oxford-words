@@ -49,6 +49,21 @@ export function onSfxMuteChange(fn: (muted: boolean) => void): () => void {
   };
 }
 
+// Warm the browser cache before the first hit lands: sounds are remote, so
+// creating them on first play made the first hit/crit silent-lagged while the
+// mp3 downloaded. Call once when the battle screen mounts.
+export function preloadSfx(): void {
+  if (muted || typeof window === "undefined") return;
+  for (const name of Object.keys(SFX_URLS) as SfxName[]) {
+    if (cache.has(name)) continue;
+    const audio = new Audio(SFX_URLS[name]);
+    audio.preload = "auto";
+    audio.volume = VOLUMES[name];
+    cache.set(name, audio);
+    audio.load();
+  }
+}
+
 export function playSfx(name: SfxName): void {
   if (muted || typeof window === "undefined") return;
   let audio = cache.get(name);

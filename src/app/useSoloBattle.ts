@@ -21,7 +21,6 @@ import {
   type SoloDifficulty,
 } from "../lib/gameConfig";
 import { saveBattleSummary, type BattleWordDetail } from "../game/battleSummary";
-import { useCountdown } from "./useCountdown";
 import { useDamagePopups } from "./useDamagePopups";
 import type { BattleOutcome } from "./useBattleRoom";
 
@@ -65,7 +64,6 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
   const resultsRef = useRef<WordResult[]>([]);
 
   const { popups, spawnPopup, clearPopups } = useDamagePopups();
-  const remainingMs = useCountdown(startedAt, TURN_MS);
 
   const endBattle = useCallback((next: BattleOutcome) => {
     outcomeRef.current = next;
@@ -306,11 +304,18 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
     [answerState, outcome, words, wordIndex, startedAt, streak, finishWord]
   );
 
+  // Turn deadline without per-tick renders: the interval only reads refs and
+  // fires submit once at expiry, so the timer no longer re-renders the whole
+  // battle screen 10x/sec (TimerBar animates itself).
   useEffect(() => {
-    if (remainingMs > 0 || outcome || !startedAt) return;
-    /* eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot: auto-submit when the turn timer expires */
-    submit(null);
-  }, [remainingMs, outcome, startedAt, wordIndex, submit]);
+    if (startedAt === null) return;
+    const deadline = startedAt + TURN_MS;
+    const id = window.setInterval(() => {
+      if (outcomeRef.current || Date.now() < deadline) return;
+      submit(null);
+    }, 100);
+    return () => window.clearInterval(id);
+  }, [startedAt, submit]);
 
   useEffect(() => {
     if (!outcome || recordedRef.current) return;
@@ -354,7 +359,7 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
       selected,
       answerState,
       waitingOpp: false,
-      remainingMs,
+      turnStartedAt: startedAt,
       popups,
       outcome,
     };
@@ -369,7 +374,7 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
     bot.name,
     selected,
     answerState,
-    remainingMs,
+    startedAt,
     popups,
     outcome,
   ]);

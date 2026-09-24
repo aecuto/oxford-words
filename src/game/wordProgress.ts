@@ -52,6 +52,29 @@ function dayKey(ms: number): string {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
+// Calendar arithmetic (not `now - 24h`): DST shifts make some days 23 or 25
+// hours, so subtracting fixed milliseconds can land on the wrong calendar day.
+function prevDayKey(now: number): string {
+  const d = new Date(now);
+  d.setDate(d.getDate() - 1);
+  return dayKey(d.getTime());
+}
+
+// Effective record for right now: after midnight the stored record is stale,
+// so reset the daily counters and carry the streak only if the goal was met
+// yesterday. Pure — persistence happens in bumpDaily.
+export function currentDailyProgress(now: number = Date.now()): DailyProgress {
+  const prev = loadDailyProgress();
+  if (prev.date === dayKey(now)) return prev;
+  return {
+    date: dayKey(now),
+    correct: 0,
+    met: false,
+    streak: prev.met && prev.date === prevDayKey(now) ? prev.streak : 0,
+    correctWords: [],
+  };
+}
+
 export function loadDailyProgress(): DailyProgress {
   try {
     const raw = window.localStorage.getItem(DAILY_KEY);
@@ -61,21 +84,7 @@ export function loadDailyProgress(): DailyProgress {
 }
 
 function bumpDaily(word: string, correct: boolean): DailyProgress {
-  const prev = loadDailyProgress();
-  const today = dayKey(Date.now());
-  let next: DailyProgress;
-  if (prev.date === today) {
-    next = { ...prev };
-  } else {
-    const yesterday = dayKey(Date.now() - DAY_MS);
-    next = {
-      date: today,
-      correct: 0,
-      met: false,
-      streak: prev.met && prev.date === yesterday ? prev.streak : 0,
-      correctWords: [],
-    };
-  }
+  let next = { ...currentDailyProgress() };
   const correctWords = next.correctWords ?? [];
   if (correct && !correctWords.includes(word)) {
     next = {

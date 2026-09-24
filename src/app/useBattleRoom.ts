@@ -22,7 +22,6 @@ import type {
 } from "../game/types";
 import { TURN_GRACE_MS, TURN_MS, WORDS_PER_BATTLE, WRONG_ANSWER_HIT } from "../lib/gameConfig";
 import { describeAuthError, ensureAnonAuth } from "../lib/firebase";
-import { useCountdown } from "./useCountdown";
 import { useDamagePopups } from "./useDamagePopups";
 import { recordResult } from "../game/progressService";
 import { mergeWordLists, loadWordPool, pickBattleWords } from "../game/wordPool";
@@ -58,7 +57,7 @@ export type BattleView = {
   selected: string | null;
   answerState: AnswerState;
   waitingOpp: boolean;
-  remainingMs: number;
+  turnStartedAt: number | null;
   popups: Popup[];
   outcome: BattleOutcome;
 };
@@ -304,40 +303,46 @@ export function useBattleRoom(code: string) {
     return () => window.clearTimeout(timer);
   }, [room, isHost, acting]);
 
-  const remainingMs = useCountdown(
-    room?.status === "playing" ? room.turnStartedAt : null,
-    TURN_MS
-  );
-
+  // Turn deadline without per-tick renders: the interval only reads refs and
+  // submits the timeout once at expiry, so the timer no longer re-renders the
+  // whole battle screen 10x/sec (TimerBar animates itself).
   useEffect(() => {
-    const r = roomRef.current;
-    if (!r || r.status !== "playing" || remainingMs > 0) return;
-    const key = slotKey;
-    if (!key || !uid) return;
-    const my = r.players[key];
-    if (!my || my.lastAnswer?.wordIndex === r.wordIndex) return;
-    if (submittedWordRef.current === r.wordIndex) return;
-    submittedWordRef.current = r.wordIndex;
-    const timedOutWord = r.words[r.wordIndex];
-    if (timedOutWord) {
-      resultsRef.current.push({ word: timedOutWord.word, correct: false });
-      wordDetailsRef.current.push({
-        wordIndex: r.wordIndex,
-        word: timedOutWord.word,
-        correct: false,
-      });
-    }
-    void acting(`timeout-${r.wordIndex}`, () =>
-      submitAnswer(
-        r.code,
-        key,
-        { wordIndex: r.wordIndex, answer: "", correct: false, at: Date.now() },
-        null,
-        0,
-        penaltyHit(r.wordIndex)
-      )
-    );
-  }, [remainingMs, room, slotKey, uid, acting]);
+    const r = room;
+    if (!r || r.status !== "playing" || r.turnStartedAt == null) return;
+    const wordIndex = r.wordIndex;
+    const deadline = r.turnStartedAt + TURN_MS;
+    const id = window.setInterval(() => {
+      if (Date.now() < deadline) return;
+      const cur = roomRef.current;
+      if (!cur || cur.status !== "playing" || cur.wordIndex !== wordIndex) return;
+      const key = slotKey;
+      if (!key || !uid) return;
+      const my = cur.players[key];
+      if (!my || my.lastAnswer?.wordIndex === cur.wordIndex) return;
+      if (submittedWordRef.current === cur.wordIndex) return;
+      submittedWordRef.current = cur.wordIndex;
+      const timedOutWord = cur.words[cur.wordIndex];
+      if (timedOutWord) {
+        resultsRef.current.push({ word: timedOutWord.word, correct: false });
+        wordDetailsRef.current.push({
+          wordIndex: cur.wordIndex,
+          word: timedOutWord.word,
+          correct: false,
+        });
+      }
+      void acting(`timeout-${cur.wordIndex}`, () =>
+        submitAnswer(
+          cur.code,
+          key,
+          { wordIndex: cur.wordIndex, answer: "", correct: false, at: Date.now() },
+          null,
+          0,
+          penaltyHit(cur.wordIndex)
+        )
+      );
+    }, 100);
+    return () => window.clearInterval(id);
+  }, [room, slotKey, uid, acting]);
 
   const submit = useCallback(
     async (answer: string | null) => {
@@ -450,11 +455,11 @@ export function useBattleRoom(code: string) {
       selected: answeredCurrent ? my.lastAnswer!.answer : null,
       answerState,
       waitingOpp: answeredCurrent && !oppAnswered && room.status === "playing",
-      remainingMs,
+      turnStartedAt: room.status === "playing" ? room.turnStartedAt ?? null : null,
       popups,
       outcome,
     };
-  }, [room, slotKey, remainingMs, popups]);
+  }, [room, slotKey, popups]);
 
   useEffect(() => {
     if (room?.status === "playing") liveSeenRef.current = true;

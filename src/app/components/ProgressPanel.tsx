@@ -5,7 +5,7 @@ import { FireIcon } from "@heroicons/react/24/solid";
 import { Card, CardBody } from "./ui/Card";
 import { loadWordPool } from "../../game/wordPool";
 import {
-  loadDailyProgress,
+  currentDailyProgress,
   loadWordStats,
   type DailyProgress,
   type WordStats,
@@ -55,7 +55,7 @@ export function ProgressPanel() {
         if (!alive) return;
         setPoolTotal(pool.length);
         setStats(loadWordStats());
-        setDaily(loadDailyProgress());
+        setDaily(currentDailyProgress());
       })
       .catch((e) => console.error("progress:pool", e));
     (async () => {
@@ -67,8 +67,13 @@ export function ProgressPanel() {
         console.error("progress:record", e);
       }
     })();
+    // Roll the daily record over at midnight even while the page stays open.
+    const dayTimer = window.setInterval(() => {
+      setDaily(currentDailyProgress());
+    }, 60_000);
     return () => {
       alive = false;
+      window.clearInterval(dayTimer);
     };
   }, []);
 

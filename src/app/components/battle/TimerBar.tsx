@@ -1,14 +1,32 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { cx } from "@emotion/css";
 import { HIGH_MS, MEDIUM_MS } from "../../../lib/gameConfig";
 
 type TimerBarProps = {
-  remainingMs: number;
+  startedAt: number | null;
   totalMs: number;
 };
 
-export function TimerBar({ remainingMs, totalMs }: TimerBarProps) {
+export function TimerBar({ startedAt, totalMs }: TimerBarProps) {
+  // The tick lives here on purpose: state updates 10x/sec, so keeping the
+  // countdown in the battle hook re-rendered the whole screen at that rate.
+  // Only this tiny subtree re-renders now.
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (startedAt === null) return;
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- sync the bar to the new turn's start instead of waiting for the first tick */
+    setNow(Date.now());
+    // 10 ticks/sec is plenty for the timer bar; a rAF loop re-rendered
+    // ~60x/sec for no visible difference.
+    const id = window.setInterval(() => setNow(Date.now()), 100);
+    return () => window.clearInterval(id);
+  }, [startedAt]);
+
+  const remainingMs =
+    startedAt === null ? totalMs : Math.max(0, totalMs - (now - startedAt));
   const ratio = Math.max(0, Math.min(1, remainingMs / totalMs));
   const seconds = Math.ceil(remainingMs / 1000);
   const zone: "fast" | "mid" | "slow" =

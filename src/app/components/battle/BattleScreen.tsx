@@ -6,7 +6,8 @@ import { SpeakerWaveIcon, FlagIcon } from "@heroicons/react/24/solid";
 import type { BattleView } from "../../useBattleRoom";
 import { isCritReady } from "../../../game/damage";
 import { TURN_MS } from "../../../lib/gameConfig";
-import { playSfx } from "../../../lib/sfx";
+import { playSfx, preloadSfx } from "../../../lib/sfx";
+import { preloadWordAudio } from "../../playWordAudio";
 import { Card, CardBody } from "../ui/Card";
 import { AnswerGrid } from "./AnswerGrid";
 import { DamagePopup } from "./DamagePopup";
@@ -62,6 +63,15 @@ export function BattleScreen({
     }
   }, [view.popups]);
 
+  // Preload audio off the interaction path: battle SFX once on mount, and the
+  // current word's pronunciation whenever the word changes.
+  useEffect(() => {
+    preloadSfx();
+  }, []);
+  useEffect(() => {
+    preloadWordAudio(view.word?.pronounce);
+  }, [view.word?.pronounce]);
+
   return (
     <div
       className={cx(
@@ -110,7 +120,7 @@ export function BattleScreen({
       {/* Timer */}
       <div className="flex items-center gap-3">
         <div className="flex-1">
-          <TimerBar remainingMs={view.remainingMs} totalMs={TURN_MS} />
+          <TimerBar startedAt={view.turnStartedAt} totalMs={TURN_MS} />
         </div>
         <SoundToggle />
       </div>

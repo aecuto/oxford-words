@@ -35,8 +35,8 @@ export default function SoloPage() {
                 Easy
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                Mostly just watches — answers back only 1 in 10 words, slowly.
-                Best for learning new words.
+                Answers most words like a real player with steady hits. Its
+                misses cost it nothing — out-damage it to win.
               </p>
             </CardBody>
           </Card>
@@ -50,8 +50,8 @@ export default function SoloPage() {
                 Hard
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                Answers every word like a real player — fast, accurate, and
-                crits on streaks. Out-race it.
+                Answers almost every word, fast, and every hit lands hard with
+                streak crits. Extra HP — out-race it to the KO.
               </p>
             </CardBody>
           </Card>

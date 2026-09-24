@@ -36,7 +36,7 @@ interface ResultWord extends OxWord {
 // --- paths ---
 const CSV_PATH = path.resolve(__dirname, "etlex-utf8.csv");
 const WORDS_PATH = path.resolve(__dirname, "../scrapper/words.json");
-const OUTPUT_PATH = path.resolve(__dirname, "words.th.json");
+const OUTPUT_PATH = path.resolve(__dirname, "../public/words.th.json");
 const MISSING_PATH = path.resolve(__dirname, "missing.txt");
 
 // --- build entries from matched rows ---

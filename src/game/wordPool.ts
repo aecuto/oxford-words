@@ -1,5 +1,4 @@
 import { flatMap, sampleSize, shuffle, uniq } from "lodash";
-import wordsJson from "../../translator/words.th.json";
 import type { Word } from "./types";
 import { WORDS_PER_BATTLE } from "../lib/gameConfig";
 import type { BattleWord } from "./types";
@@ -12,7 +11,13 @@ const typeMap: Record<string, string> = {
   adverb: "ADV",
 };
 
+// The pool is a stable module-level object, so memoizing per word object turns
+// the repeated O(pool) scans in buildAnswers/loadWordPool into cache hits.
+const answerCache = new WeakMap<Word, string>();
+
 export function getCorrectAnswer(word: Word): string {
+  const cached = answerCache.get(word);
+  if (cached !== undefined) return cached;
   const entryType = typeMap[word.type];
   const entries = word.entries ?? [];
 
@@ -22,20 +27,25 @@ export function getCorrectAnswer(word: Word): string {
 
   const thaiTranslations = uniq(flatMap(filteredEntries, (e) => e.thai ?? []));
 
-  if (thaiTranslations.length > 0) {
-    return thaiTranslations.slice(0, 3).join(", ");
-  }
-
-  return entries.flatMap((e) => e.thai ?? [])[0] || "";
+  const answer =
+    thaiTranslations.length > 0
+      ? thaiTranslations.slice(0, 3).join(", ")
+      : entries.flatMap((e) => e.thai ?? [])[0] || "";
+  answerCache.set(word, answer);
+  return answer;
 }
 
 export function buildAnswers(current: Word, pool: Word[]): string[] {
   const correct = getCorrectAnswer(current);
-  const distractors = pool
-    .filter((w) => w.word !== current.word)
-    .map(getCorrectAnswer)
-    .filter((a) => a && a !== correct);
-  const picked = uniq(sampleSize(distractors, 3));
+  const distractors: string[] = [];
+  for (const w of pool) {
+    if (w.word === current.word) continue;
+    const a = getCorrectAnswer(w);
+    if (a && a !== correct) distractors.push(a);
+  }
+  // uniq before sampling: distractors can repeat the same answer string, and
+  // sampling duplicates would shrink the grid below 4 options.
+  const picked = sampleSize(uniq(distractors), 3);
   return shuffle([correct, ...picked]);
 }
 
@@ -177,12 +187,43 @@ export function pickBattleWords(
     ...newTail,
     ...scheduledSorted,
   ].slice(0, count);
-  return shuffle(picked).map((w) => buildBattleWord(w, pool));
+
+  // One pass over the pool for all answer keys instead of one scan per word.
+  const answers = new Map(picked.map((w) => [w.word, getCorrectAnswer(w)]));
+  return shuffle(picked).map((w) => {
+    const correct = answers.get(w.word) ?? "";
+    const distractors: string[] = [];
+    for (const [other, a] of answers) {
+      if (other === w.word || !a || a === correct) continue;
+      distractors.push(a);
+    }
+    const options = shuffle([correct, ...sampleSize(uniq(distractors), 3)]);
+    return {
+      word: w.word,
+      type: w.type,
+      level: w.level,
+      pronounce: w.pronounce,
+      correctAnswer: correct,
+      options,
+    };
+  });
 }
 
-export async function loadWordPool(): Promise<Word[]> {
-  const all = wordsJson as Word[];
-  const answerable = all.filter((w) => getCorrectAnswer(w) !== "");
-  const ox3000 = answerable.filter((w) => w.ox3000);
-  return ox3000.length >= WORDS_PER_BATTLE ? ox3000 : answerable;
+// The 3MB word data lives in public/ and is fetched once per session instead
+// of being imported into the JS bundle, so the battle page ships kilobytes of
+// code instead of megabytes of JSON to download and parse on the main thread.
+let poolPromise: Promise<Word[]> | null = null;
+
+export function loadWordPool(): Promise<Word[]> {
+  poolPromise ??= fetch("/words.th.json")
+    .then((res) => {
+      if (!res.ok) throw new Error(`words.th.json: HTTP ${res.status}`);
+      return res.json() as Promise<Word[]>;
+    })
+    .then((all) => {
+      const answerable = all.filter((w) => getCorrectAnswer(w) !== "");
+      const ox3000 = answerable.filter((w) => w.ox3000);
+      return ox3000.length >= WORDS_PER_BATTLE ? ox3000 : answerable;
+    });
+  return poolPromise;
 }
