@@ -20,7 +20,7 @@ import {
   botConfigFor,
   type SoloDifficulty,
 } from "../lib/gameConfig";
-import { saveBattleSummary, type BattleWordDetail } from "../game/battleSummary";
+import { loadBattleSummary, saveBattleSummary, type BattleWordDetail } from "../game/battleSummary";
 import { useDamagePopups } from "./useDamagePopups";
 import type { BattleOutcome } from "./useBattleRoom";
 
@@ -120,6 +120,8 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
   );
 
   const reset = useCallback(() => {
+    // Words of the battle just played must not reappear in the next one.
+    const prevWords = wordsRef.current.map((w) => w.word);
     timersRef.current.forEach((t) => window.clearTimeout(t));
     timersRef.current = [];
     if (botTimerRef.current != null) window.clearTimeout(botTimerRef.current);
@@ -147,7 +149,8 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
         const picked = pickBattleWords(
           poolRef.current,
           WORDS_PER_BATTLE,
-          statsRef.current
+          statsRef.current,
+          prevWords
         );
         wordsRef.current = picked;
         wordDetailsRef.current = [];
@@ -167,7 +170,10 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
         const stats = loadWordStats();
         poolRef.current = pool;
         statsRef.current = stats;
-        const picked = pickBattleWords(pool, WORDS_PER_BATTLE, stats);
+        // Returning from the result page remounts this hook, so the last
+        // battle's summary is the only record of what was just played.
+        const prevWords = (loadBattleSummary()?.words ?? []).map((w) => w.word);
+        const picked = pickBattleWords(pool, WORDS_PER_BATTLE, stats, prevWords);
         wordsRef.current = picked;
         setWords(picked);
         setWordResults(new Array(picked.length).fill(null));

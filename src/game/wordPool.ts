@@ -118,6 +118,19 @@ function levelRank(level: string): number {
   return i === -1 ? LEVEL_ORDER.length : i;
 }
 
+// The source data repeats a headword once per part of speech (e.g. "about" as
+// adverb and as preposition) with identical entries, so an undeduped pool deals
+// the same word twice in one battle. Keep one entry per word, preferring the
+// ox3000-flagged copy.
+export function dedupeWords(words: Word[]): Word[] {
+  const byWord = new Map<string, Word>();
+  for (const w of words) {
+    const prev = byWord.get(w.word);
+    if (!prev || (!prev.ox3000 && w.ox3000)) byWord.set(w.word, w);
+  }
+  return [...byWord.values()];
+}
+
 function duePriority(s: WordStat | undefined, now: number): number {
   if (!s) return 0;
   const ivlDays = Math.max(s.ivl, 1);
@@ -133,17 +146,14 @@ function nextDueAt(s: WordStat | undefined): number {
   return s.lastSeenAt + Math.max(s.ivl, 1) * DAY_MS;
 }
 
-export function pickBattleWords(
-  pool: Word[],
-  count: number = WORDS_PER_BATTLE,
-  stats: WordStats = {},
-): BattleWord[] {
+// Priority pipeline shared by PvP and PvE (rules at the top of this file).
+function selectWords(candidates: Word[], count: number, stats: WordStats): Word[] {
   const now = Date.now();
   const cooldownUntil = now - RECENT_COOLDOWN_MS;
   const due: Word[] = [];
   const fresh: Word[] = [];
   const scheduled: Word[] = [];
-  for (const w of pool) {
+  for (const w of candidates) {
     const s = stats[w.word];
     if (!s || s.seen === 0) fresh.push(w);
     else if (isDue(s, now) && s.lastSeenAt < cooldownUntil) due.push(w);
@@ -180,14 +190,16 @@ export function pickBattleWords(
     (a, b) => nextDueAt(stats[a.word]) - nextDueAt(stats[b.word]),
   );
 
-  const picked = [
+  return [
     ...headDue,
     ...newHead,
     ...tailDue,
     ...newTail,
     ...scheduledSorted,
   ].slice(0, count);
+}
 
+function toBattleWords(picked: Word[]): BattleWord[] {
   // One pass over the pool for all answer keys instead of one scan per word.
   const answers = new Map(picked.map((w) => [w.word, getCorrectAnswer(w)]));
   return shuffle(picked).map((w) => {
@@ -209,6 +221,31 @@ export function pickBattleWords(
   });
 }
 
+export function pickBattleWords(
+  pool: Word[],
+  count: number = WORDS_PER_BATTLE,
+  stats: WordStats = {},
+  exclude: Iterable<string> = [],
+): BattleWord[] {
+  const all = dedupeWords(pool);
+  const recent = new Set(exclude);
+  // Words already dealt in this room's previous battle — by either player —
+  // are held out so back-to-back battles and PvP rematches deal a fresh set;
+  // they only return if the pool is too small to fill the battle otherwise.
+  const candidates = recent.size ? all.filter((w) => !recent.has(w.word)) : all;
+  const picked = selectWords(candidates, count, stats);
+  if (picked.length < count) {
+    const chosen = new Set(picked.map((w) => w.word));
+    picked.push(
+      ...shuffle(all.filter((w) => recent.has(w.word) && !chosen.has(w.word))).slice(
+        0,
+        count - picked.length
+      )
+    );
+  }
+  return toBattleWords(picked);
+}
+
 // The 3MB word data lives in public/ and is fetched once per session instead
 // of being imported into the JS bundle, so the battle page ships kilobytes of
 // code instead of megabytes of JSON to download and parse on the main thread.
@@ -221,7 +258,7 @@ export function loadWordPool(): Promise<Word[]> {
       return res.json() as Promise<Word[]>;
     })
     .then((all) => {
-      const answerable = all.filter((w) => getCorrectAnswer(w) !== "");
+      const answerable = dedupeWords(all.filter((w) => getCorrectAnswer(w) !== ""));
       const ox3000 = answerable.filter((w) => w.ox3000);
       return ox3000.length >= WORDS_PER_BATTLE ? ox3000 : answerable;
     });

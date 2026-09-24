@@ -42,7 +42,6 @@ export default function BattleHub() {
   const [myUid, setMyUid] = useState<string | null>(null);
   const [myRoomCode, setMyRoomCode] = useState<string | null>(null);
   const [myRoom, setMyRoom] = useState<ClientRoom | null>(null);
-  const [copied, setCopied] = useState(false);
   const startingRef = useRef(false);
 
   useEffect(() => {
@@ -146,19 +145,6 @@ export default function BattleHub() {
     setMyRoom(null);
   };
 
-  const copyInvite = async () => {
-    if (!myRoomCode) return;
-    try {
-      await navigator.clipboard.writeText(
-        `${window.location.origin}/battle/room?id=${myRoomCode}`,
-      );
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      console.error("clipboard failed");
-    }
-  };
-
   const visibleRooms = (openRooms ?? []).filter(
     (room) => room.hostUid !== myUid || room.code === myRoomCode,
   );
@@ -192,28 +178,16 @@ export default function BattleHub() {
 
               {myRoomCode ? (
                 <div className="rounded-lg bg-blue-500/10 border border-blue-500/40 px-3 py-2.5 flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-lg font-black font-mono tracking-[0.2em] text-blue-400">
-                      {myRoomCode}
-                    </p>
-                    <p className="text-[10px] text-gray-400">Waiting...</p>
-                  </div>
-                  <div className="flex shrink-0 gap-1.5">
-                    <Button
-                      variant="gray"
-                      onClick={copyInvite}
-                      className="px-3 py-2 text-xs"
-                    >
-                      {copied ? "Copied!" : "Copy link"}
-                    </Button>
-                    <Button
-                      variant="gray"
-                      onClick={cancelRoom}
-                      className="px-3 py-2 text-xs"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
+                  <p className="min-w-0 truncate text-lg font-black font-mono tracking-[0.2em] text-blue-400">
+                    {myRoomCode}
+                  </p>
+                  <Button
+                    variant="gray"
+                    onClick={cancelRoom}
+                    className="shrink-0 px-3 py-2 text-xs"
+                  >
+                    Cancel
+                  </Button>
                 </div>
               ) : (
                 <Button

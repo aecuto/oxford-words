@@ -211,10 +211,19 @@ export function useBattleRoom(code: string) {
       void (async () => {
         try {
           const pool = await loadWordPool();
+          // Words published on the room doc (the host's pick for the pending
+          // battle, or the last battle's set on a rematch) must not reappear
+          // in my half — I only know my own stats, so exclusion is explicit.
+          const shown = await getRoom(code);
+          const excluded = [
+            ...(shown?.words ?? []),
+            ...(shown?.players.p1?.words ?? []),
+          ].map((w) => w.word);
           const myWords = pickBattleWords(
             pool,
             WORDS_PER_BATTLE,
-            loadWordStats()
+            loadWordStats(),
+            excluded
           );
           await joinRoom(code, myUid, joinName.trim() || "Player 2", myWords);
           watchRoom(myUid);

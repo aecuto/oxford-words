@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "smoke": "tsx scripts/smoke-wordPool.ts",
     "fetch-oxford-words": "tsx scrapper/index.ts"
   },
   "dependencies": {

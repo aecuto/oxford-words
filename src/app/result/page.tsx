@@ -112,7 +112,9 @@ function ResultPage() {
     try {
       const uid = await ensureAnonAuth();
       const pool = await loadWordPool();
-      const words = pickBattleWords(pool, WORDS_PER_BATTLE, loadWordStats());
+      // Hold out the battle just played so the rematch deals fresh words.
+      const shown = (summary?.words ?? []).map((w) => w.word);
+      const words = pickBattleWords(pool, WORDS_PER_BATTLE, loadWordStats(), shown);
       await rematchRoom(code, uid, words);
       router.push(`/battle/room?id=${code}`);
     } catch (e) {
