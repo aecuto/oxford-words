@@ -2,19 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import { cx } from "@emotion/css";
-import { SpeakerWaveIcon, FlagIcon } from "@heroicons/react/24/solid";
+import { FlagIcon } from "@heroicons/react/24/solid";
 import type { BattleView } from "../../useBattleRoom";
 import { isCritReady } from "../../../game/damage";
 import { TURN_MS } from "../../../lib/gameConfig";
 import { playSfx, preloadSfx } from "../../../lib/sfx";
 import { preloadWordAudio } from "../../playWordAudio";
-import { Card, CardBody } from "../ui/Card";
 import { AnswerGrid } from "./AnswerGrid";
 import { DamagePopup } from "./DamagePopup";
 import { FlashOverlay, useCritEffects } from "./EffectLayer";
 import { HpBar } from "./HpBar";
 import { SoundToggle } from "./SoundToggle";
 import { TimerBar } from "./TimerBar";
+import { WordPlayBox } from "./WordPlayBox";
 import { WordProgress } from "./WordProgress";
 
 type BattleScreenProps = {
@@ -53,6 +53,16 @@ export function BattleScreen({
     onViewResult();
   };
 
+  const viewResultButton = (
+    <button
+      onClick={handleViewResult}
+      className="animate-popIn inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-3 text-sm sm:text-base font-black text-white shadow-lg shadow-indigo-600/30 hover:bg-indigo-500 active:scale-95 transition-all touch-manipulation select-none"
+    >
+      <FlagIcon className="w-5 h-5" />
+      View result
+    </button>
+  );
+
   const seenPopups = useRef<Set<number>>(new Set());
   useEffect(() => {
     for (const p of view.popups) {
@@ -75,7 +85,7 @@ export function BattleScreen({
   return (
     <div
       className={cx(
-        "relative max-w-screen-md m-auto w-full p-4 sm:p-6 select-none",
+        "relative mx-auto flex min-h-screen w-full max-w-screen-md flex-col justify-center p-4 sm:p-6 select-none",
         shake && "animate-shake",
       )}
     >
@@ -93,37 +103,42 @@ export function BattleScreen({
         />
       </div>
 
-      {/* Word card */}
-      <div
-        onClick={handlePlayWord}
-        className="mb-3 cursor-pointer hover:scale-[1.01] transition-transform touch-manipulation"
-      >
-        <Card className="border-2 border-transparent hover:border-blue-400/50">
-          <CardBody className="text-center py-4 sm:py-5">
-            <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-1 break-words">
-              {view.word?.word ?? "..."}
-            </h3>
-            <div className="flex items-center justify-center gap-2">
-              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 font-medium">
-                {view.word?.type}
-              </span>
-              <span className="text-xs text-gray-400">
-                {soundUnlocked
-                  ? "tap word for pronunciation"
-                  : "tap to play sound"}
-              </span>
-            </div>
-          </CardBody>
-        </Card>
-      </div>
-
-      {/* Timer */}
-      <div className="flex items-center gap-3">
-        <div className="flex-1">
-          <TimerBar startedAt={view.turnStartedAt} totalMs={TURN_MS} />
+      {/* Timer — stopped/hidden once the battle has ended */}
+      {!ended && (
+        <div className="flex items-center gap-3 mb-2">
+          <div className="flex-1">
+            <TimerBar startedAt={view.turnStartedAt} totalMs={TURN_MS} />
+          </div>
+          <SoundToggle />
         </div>
-        <SoundToggle />
-      </div>
+      )}
+
+      {/* Word box — tap to play the sound; the word and answers appear inside.
+          Once the battle ends, it is replaced by the view result box. */}
+      {ended ? (
+        <div className="flex justify-center">{viewResultButton}</div>
+      ) : (
+        view.word && (
+          <WordPlayBox
+            word={view.word}
+            played={soundUnlocked}
+            onTap={handlePlayWord}
+          >
+            {soundUnlocked && (
+              <AnswerGrid
+                word={view.word}
+                selected={view.selected}
+                answerState={view.answerState}
+                disabled={view.answerState !== "idle"}
+                crit={critCharged && view.answerState === "idle"}
+                onSelect={(answer) => {
+                  onAnswer(answer);
+                }}
+              />
+            )}
+          </WordPlayBox>
+        )
+      )}
 
       {/* Waiting indicator */}
       <div className="mb-2 flex flex-wrap items-center justify-center gap-2 min-h-7">
@@ -161,30 +176,6 @@ export function BattleScreen({
         )}
       </div>
 
-      {/* Answers */}
-      {view.word && !soundUnlocked ? (
-        <button
-          onClick={handlePlayWord}
-          className="w-full py-6 sm:py-8 rounded-xl border-2 border-dashed border-blue-400/60 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 font-bold text-base sm:text-lg cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/50 active:scale-[0.98] transition-all touch-manipulation select-none animate-popIn flex items-center justify-center gap-2"
-        >
-          <SpeakerWaveIcon className="w-5 h-5" />
-          Tap to play sound
-        </button>
-      ) : (
-        view.word && (
-          <AnswerGrid
-            word={view.word}
-            selected={view.selected}
-            answerState={view.answerState}
-            disabled={ended || view.answerState !== "idle"}
-            crit={critCharged && !ended && view.answerState === "idle"}
-            onSelect={(answer) => {
-              onAnswer(answer);
-            }}
-          />
-        )
-      )}
-
       {/* HP bars — bottom; damage popups drop into the reserved space below */}
       <div className="relative flex items-start gap-2 sm:gap-3 mt-4 mb-12">
         <div className="relative flex-1">
@@ -218,19 +209,6 @@ export function BattleScreen({
             ))}
         </div>
       </div>
-
-      {/* View result tab — navigates to the result page */}
-      {ended && (
-        <div className="absolute inset-x-0 bottom-2 z-40 flex justify-center px-4">
-          <button
-            onClick={handleViewResult}
-            className="animate-popIn inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-3 text-sm sm:text-base font-black text-white shadow-lg shadow-indigo-600/30 hover:bg-indigo-500 active:scale-95 transition-all touch-manipulation select-none"
-          >
-            <FlagIcon className="w-5 h-5" />
-            View result
-          </button>
-        </div>
-      )}
     </div>
   );
 }

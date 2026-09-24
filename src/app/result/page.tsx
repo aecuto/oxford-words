@@ -6,6 +6,7 @@ import { cx } from "@emotion/css";
 import { SpeakerWaveIcon } from "@heroicons/react/24/solid";
 import { Button } from "../components/ui/Button";
 import { Card, CardBody } from "../components/ui/Card";
+import { DailyGoal } from "../components/DailyGoal";
 import { playWordAudio } from "../playWordAudio";
 import { useStoredName } from "../useStoredName";
 import {
@@ -14,7 +15,11 @@ import {
 } from "../../game/battleSummary";
 import { rematchRoom } from "../../game/roomService";
 import { loadWordPool, pickBattleWords } from "../../game/wordPool";
-import { loadWordStats } from "../../game/wordProgress";
+import {
+  currentDailyProgress,
+  loadWordStats,
+  type DailyProgress,
+} from "../../game/wordProgress";
 import { WORDS_PER_BATTLE } from "../../lib/gameConfig";
 import { describeAuthError, ensureAnonAuth } from "../../lib/firebase";
 
@@ -36,9 +41,7 @@ function Shell({ children }: { children: ReactNode }) {
 }
 
 function parseOutcome(param: string | null): Outcome | null {
-  return param === "win" || param === "lose" || param === "draw"
-    ? param
-    : null;
+  return param === "win" || param === "lose" || param === "draw" ? param : null;
 }
 
 function parseMode(param: string | null): Mode | null {
@@ -77,22 +80,23 @@ function ResultPage() {
   const searchParams = useSearchParams();
 
   const [summary, setSummary] = useState<BattleSummary | null>(null);
+  const [daily, setDaily] = useState<DailyProgress | null>(null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
   useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot: read session storage after mount to avoid SSR/hydration mismatch */
     setSummary(loadBattleSummary());
+    setDaily(currentDailyProgress());
   }, []);
 
-  const outcome =
-    summary?.outcome ?? parseOutcome(searchParams.get("outcome"));
+  const outcome = summary?.outcome ?? parseOutcome(searchParams.get("outcome"));
   const mode = summary?.mode ?? parseMode(searchParams.get("mode"));
   const difficulty =
-    summary?.difficulty ??
-    parseDifficulty(searchParams.get("difficulty"));
+    summary?.difficulty ?? parseDifficulty(searchParams.get("difficulty"));
 
-  const playAgain = () => router.push("/solo");
+  const playAgain = () =>
+    router.push(difficulty ? `/solo?difficulty=${difficulty}` : "/solo");
 
   // PvP: reopen the same room for a rematch — no code typing. rematchRoom
   // resets it only if the battle has ended; the host client then auto-starts
@@ -152,7 +156,7 @@ function ResultPage() {
         <h1
           className={cx(
             "text-6xl sm:text-8xl font-black tracking-widest select-none",
-            result.color
+            result.color,
           )}
         >
           {result.title}
@@ -170,7 +174,11 @@ function ResultPage() {
               value={`${summary.correct}/${summary.answered}`}
               tone="text-emerald-400"
             />
-            <Stat label="Accuracy" value={`${accuracy}%`} tone="text-blue-400" />
+            <Stat
+              label="Accuracy"
+              value={`${accuracy}%`}
+              tone="text-blue-400"
+            />
             <Stat
               label="Best streak"
               value={summary.bestStreak}
@@ -178,6 +186,8 @@ function ResultPage() {
             />
           </div>
         )}
+
+        <DailyGoal daily={daily} className="mt-5 w-full max-w-xs" />
 
         {missed.length > 0 && (
           <Card className="w-full max-w-sm mt-4">
