@@ -1,12 +1,16 @@
 import {
   arrayUnion,
+  collection,
   doc,
   getDoc,
+  limit,
   onSnapshot,
+  query,
   runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
   type DocumentReference,
   type Unsubscribe,
 } from "firebase/firestore";
@@ -19,7 +23,7 @@ import {
 } from "../lib/gameConfig";
 import { getFirebase } from "../lib/firebase";
 import { mergeWordLists } from "./wordPool";
-import type { BattleWord, Hit, LastAnswer, RoomDoc, SlotKey, Winner } from "./types";
+import type { BattleWord, Hit, LastAnswer, OpenRoom, RoomDoc, SlotKey, Winner } from "./types";
 import type { ClientRoom, PlayerSlot } from "./types";
 
 function roomRef(code: string) {
@@ -48,6 +52,14 @@ function toClientRoom(data: RoomDoc | undefined): ClientRoom | null {
   };
 }
 
+function tsToMillis(ts: unknown): number {
+  const t = ts as { toMillis?: () => number } | null | undefined;
+  return typeof t?.toMillis === "function" ? t.toMillis() : 0;
+}
+
+export const OPEN_ROOM_MAX_AGE_MS = 60 * 60 * 1000;
+export const ACTIVE_ROOM_WINDOW_MS = 90 * 1000;
+
 export async function createRoom(
   uid: string,
   name: string,
@@ -69,11 +81,21 @@ export async function createRoom(
       players: { p1: newSlot(uid, name, []), p2: null },
       winner: null,
       rematchReady: { p1: false, p2: false },
+      createdAt: serverTimestamp() as unknown as RoomDoc["createdAt"],
+      heartbeat: serverTimestamp() as unknown as RoomDoc["heartbeat"],
     };
     await setDoc(ref, room);
     return code;
   }
   throw new Error("Could not allocate a free room code, try again");
+}
+
+export async function closeRoom(code: string): Promise<void> {
+  await updateDoc(roomRef(code), { status: "closed" });
+}
+
+export async function pingRoom(code: string): Promise<void> {
+  await updateDoc(roomRef(code), { heartbeat: serverTimestamp() });
 }
 
 export async function getRoom(code: string): Promise<ClientRoom | null> {
@@ -88,6 +110,38 @@ export function subscribeRoom(
   return onSnapshot(roomRef(code), (snap) =>
     onChange(toClientRoom(snap.data({ serverTimestamps: "estimate" })))
   );
+}
+
+export function subscribeOpenRooms(
+  onChange: (rooms: OpenRoom[]) => void
+): Unsubscribe {
+  const { fs } = getFirebase();
+  const q = query(
+    collection(fs, COLLECTION),
+    where("status", "==", "waiting"),
+    limit(25)
+  );
+  return onSnapshot(q, (snap) => {
+    const now = Date.now();
+    const rooms: OpenRoom[] = [];
+    for (const d of snap.docs) {
+      const data = d.data({ serverTimestamps: "estimate" });
+      if (data.players.p2 != null) continue;
+      const createdAt = tsToMillis(data.createdAt);
+      if (!createdAt || now - createdAt > OPEN_ROOM_MAX_AGE_MS) continue;
+      const heartbeat = tsToMillis(data.heartbeat);
+      const lastActive = heartbeat || createdAt;
+      if (now - lastActive > ACTIVE_ROOM_WINDOW_MS) continue;
+      rooms.push({
+        code: data.code,
+        host: data.players.p1?.name ?? "Player 1",
+        hostUid: data.hostUid,
+        createdAt,
+      });
+    }
+    rooms.sort((a, b) => b.createdAt - a.createdAt);
+    onChange(rooms);
+  });
 }
 
 export async function joinRoom(

@@ -67,6 +67,15 @@ export type RoomDoc = {
   players: Record<SlotKey, PlayerSlot | null>;
   winner: Winner | null;
   rematchReady?: Record<SlotKey, boolean>;
+  createdAt?: Timestamp | null;
+  heartbeat?: Timestamp | null;
+};
+
+export type OpenRoom = {
+  code: string;
+  host: string;
+  hostUid: string;
+  createdAt: number;
 };
 
 export type ClientRoom = Omit<RoomDoc, "turnStartedAt"> & {

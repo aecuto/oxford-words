@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { cx } from "@emotion/css";
 import { useBattleRoom } from "../../useBattleRoom";
@@ -16,26 +16,16 @@ function RoomPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const code = (searchParams.get("id") ?? "").toUpperCase();
-  const { name, saveName } = useStoredName();
+  const { name } = useStoredName();
 
-  const { phase, error, view, submit, rename, join, joining } =
-    useBattleRoom(code);
+  const { phase, error, view, submit, join, isHost } = useBattleRoom(code);
 
-  const [copied, setCopied] = useState(false);
-  const shareLink =
-    typeof window !== "undefined" && code
-      ? `${window.location.origin}/battle/room?id=${code}`
-      : "";
-
-  const copyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(shareLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      console.error("clipboard failed");
-    }
-  };
+  const autoJoinedRef = useRef(false);
+  useEffect(() => {
+    if (phase !== "join" || autoJoinedRef.current) return;
+    autoJoinedRef.current = true;
+    join(name);
+  }, [phase, join, name]);
 
   if (!code) {
     return (
@@ -58,31 +48,7 @@ function RoomPage() {
   if (phase === "join") {
     return (
       <Center>
-        <Card className="w-full max-w-sm animate-popIn">
-          <CardBody className="text-center space-y-3 p-5 sm:p-6">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Joining room
-            </p>
-            <p className="text-4xl sm:text-5xl font-black font-mono tracking-[0.2em] sm:tracking-[0.3em]">
-              {code}
-            </p>
-            <input
-              value={name}
-              maxLength={16}
-              placeholder="Player 2"
-              onChange={(e) => saveName(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-600 text-base text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <div className="flex flex-col gap-2 pt-1">
-              <Button onClick={() => join(name)} disabled={joining}>
-                {joining ? "Joining..." : "Join"}
-              </Button>
-              <Button onClick={() => router.push("/")} variant="gray">
-                Cancel
-              </Button>
-            </div>
-          </CardBody>
-        </Card>
+        <div className="loader" />
       </Center>
     );
   }
@@ -97,49 +63,22 @@ function RoomPage() {
   }
 
   if (phase === "waiting") {
+    if (isHost) {
+      return <BackToLobby />;
+    }
     return (
       <Center>
-        <Card className="w-full max-w-sm animate-popIn">
-          <CardBody className="text-center space-y-3 p-5 sm:p-6">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Room code — share it with your friend
-            </p>
-            <p className="text-4xl sm:text-5xl font-black font-mono tracking-[0.2em] sm:tracking-[0.3em]">
-              {code}
-            </p>
-            <p className="text-xs text-gray-400 break-all">{shareLink}</p>
-            <div className="pt-1 text-left">
-              <label
-                htmlFor="room-name"
-                className="text-xs font-bold text-gray-400 uppercase tracking-wide"
-              >
-                Your name
-              </label>
-              <input
-                id="room-name"
-                value={name}
-                maxLength={16}
-                placeholder="Your name"
-                onChange={(e) => {
-                  saveName(e.target.value);
-                  rename(e.target.value);
-                }}
-                className="mt-1 w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-600 text-base text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div className="flex flex-col gap-2 pt-1">
-              <Button onClick={copyLink}>
-                {copied ? "Link copied!" : "Copy invite link"}
-              </Button>
-              <Button onClick={() => router.push("/solo")} variant="purple">
-                Play solo while waiting
-              </Button>
-              <Button onClick={() => router.push("/")} variant="gray">
-                Leave room
-              </Button>
-            </div>
-          </CardBody>
-        </Card>
+        <div className="loader" />
+        <p className="mt-4 text-sm text-gray-400">
+          Waiting for the host to start...
+        </p>
+        <Button
+          onClick={() => router.push("/")}
+          variant="gray"
+          className="mt-4"
+        >
+          Back to lobby
+        </Button>
       </Center>
     );
   }
@@ -190,6 +129,18 @@ function RoomPage() {
         }
       />
     </div>
+  );
+}
+
+function BackToLobby() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/");
+  }, [router]);
+  return (
+    <Center>
+      <div className="loader" />
+    </Center>
   );
 }
 

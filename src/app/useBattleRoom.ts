@@ -173,7 +173,7 @@ export function useBattleRoom(code: string) {
         const existing = await getRoom(code);
         if (!alive) return;
         if (!existing) {
-          setError("Room not found. Check the code or ask for a new link.");
+          setError("Room not found or already closed. Join from the lobby list or ask for a new invite link.");
           return;
         }
         if (
@@ -532,6 +532,7 @@ export function useBattleRoom(code: string) {
     rename,
     join,
     joining,
+    isHost,
   } as const;
 }
 
