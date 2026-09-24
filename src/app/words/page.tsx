@@ -199,7 +199,7 @@ function WordsPageInner() {
             ) : visible.length === 0 ? (
               <p className="text-sm text-gray-500 text-center py-10 px-4">
                 {filter === "mastered"
-                  ? "No known words yet — answer a word in under a second to master it."
+                  ? "No known words yet — answer a word in under two seconds to master it."
                   : "Nothing to study yet — play a battle to start collecting words."}
               </p>
             ) : (

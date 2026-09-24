@@ -180,7 +180,7 @@ async function main() {
 
   check("answers grade into pool marks and review intervals", () => {
     const stats = saveWordResults([
-      { word: "grade-instant", correct: true, ms: 800 },
+      { word: "grade-instant", correct: true, ms: 1_500 },
       { word: "grade-slow", correct: true, ms: 2_500 },
       { word: "grade-blank", correct: true, ms: 5_500 },
       { word: "grade-timeout", correct: false, ms: 10_000, timeout: true },

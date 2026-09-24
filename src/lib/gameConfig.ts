@@ -74,6 +74,7 @@ export const MEDIUM_MS = 7_000;
 // Answer-speed buckets for the SRS pool transitions (src/game/wordProgress.ts):
 // a correct answer faster than ANSWER_INSTANT_MS masters the word, faster than
 // ANSWER_SLOW_MS keeps it in learning, and anything slower (or a timeout)
-// counts as a blank.
-export const ANSWER_INSTANT_MS = 1_000;
+// counts as a blank. Instant sits at 2s because sub-second picks are rare on
+// a 4-option grid — at 1s the Known counter stayed pinned at zero.
+export const ANSWER_INSTANT_MS = 2_000;
 export const ANSWER_SLOW_MS = 4_000;
