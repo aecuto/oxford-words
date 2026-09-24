@@ -178,6 +178,102 @@ async function main() {
     );
   });
 
+  check("answers grade into pool marks and review intervals", () => {
+    const stats = saveWordResults([
+      { word: "grade-instant", correct: true, ms: 800 },
+      { word: "grade-slow", correct: true, ms: 2_500 },
+      { word: "grade-blank", correct: true, ms: 5_500 },
+      { word: "grade-timeout", correct: false, ms: 10_000, timeout: true },
+      { word: "grade-false-friend", correct: false, ms: 1_200 },
+    ]);
+    assert.equal(stats["grade-instant"].mark, "instant");
+    assert.equal(stats["grade-instant"].ivl, 14);
+    assert.equal(stats["grade-slow"].mark, "slow");
+    assert.equal(stats["grade-slow"].ivl, 2);
+    assert.equal(stats["grade-blank"].mark, "blank");
+    assert.equal(stats["grade-blank"].ivl, 1);
+    assert.equal(stats["grade-timeout"].mark, "blank");
+    assert.equal(stats["grade-false-friend"].mark, "falseFriend");
+    assert.equal(stats["grade-false-friend"].ivl, 0);
+  });
+
+  // 1:2 interleaved draw: with plentiful pools every 3-word cycle deals
+  // exactly 1 new + 2 old, so count 30 must split 10/20.
+  check("1:2 rule: plentiful pools yield 1 new : 2 old", () => {
+    const now = Date.now();
+    const stats: WordStats = {};
+    pool.slice(0, 300).forEach((w) => {
+      stats[w.word] = { seen: 1, correct: 0, wrong: 1, lastSeenAt: now - 3 * DAY_MS, ivl: 2, mark: "slow" };
+    });
+    pool.slice(300, 600).forEach((w) => {
+      stats[w.word] = { seen: 1, correct: 1, wrong: 0, lastSeenAt: now - 3 * DAY_MS, ivl: 14, mark: "instant" };
+    });
+    const words = pickBattleWords(pool, 30, stats);
+    const old = words.filter((w) => stats[w.word]).length;
+    assert.equal(words.length, 30);
+    assert.equal(old, 20, `expected 20 old slots, got ${old}`);
+    assert.equal(words.length - old, 10, "expected 10 new slots");
+  });
+
+  // Pool B weighs 2x Pool C among due old words. Statistical: 20 old draws
+  // per battle at p(B)=2/3, so 150 battles ≈ 3000 draws, σ ≈ 0.9% — the wide
+  // 55–80% band keeps the check deterministic in practice.
+  check("Pool B (learning) weighs 2x Pool C (mastered)", () => {
+    const now = Date.now();
+    const stats: WordStats = {};
+    pool.slice(0, 400).forEach((w) => {
+      stats[w.word] = { seen: 2, correct: 1, wrong: 1, lastSeenAt: now - 3 * DAY_MS, ivl: 2, mark: "slow" };
+    });
+    pool.slice(400, 800).forEach((w) => {
+      stats[w.word] = { seen: 2, correct: 2, wrong: 0, lastSeenAt: now - 30 * DAY_MS, ivl: 14, mark: "instant" };
+    });
+    let fromB = 0;
+    let fromC = 0;
+    for (let i = 0; i < 150; i++) {
+      for (const w of pickBattleWords(pool, 30, stats)) {
+        const mark = stats[w.word]?.mark;
+        if (mark === "slow") fromB++;
+        else if (mark === "instant") fromC++;
+      }
+    }
+    const share = fromB / (fromB + fromC);
+    assert.ok(
+      share > 0.55 && share < 0.8,
+      `Pool B share ${(share * 100).toFixed(1)}% outside the 2:1 band (B=${fromB}, C=${fromC})`,
+    );
+  });
+
+  // False friends (ivl 0) are due immediately and jump the queue — even when
+  // every other learning word is still inside the 30-min session cooldown.
+  check("false friends return immediately at top priority", () => {
+    const now = Date.now();
+    const stats: WordStats = {};
+    pool.slice(0, 100).forEach((w) => {
+      stats[w.word] = { seen: 1, correct: 0, wrong: 1, lastSeenAt: now - 5 * 60_000, ivl: 2, mark: "slow" };
+    });
+    const ff = pool[0];
+    stats[ff.word] = { seen: 1, correct: 0, wrong: 1, lastSeenAt: now - 5 * 60_000, ivl: 0, mark: "falseFriend" };
+    const words = pickBattleWords(pool, WORDS_PER_BATTLE, stats);
+    assert.ok(
+      words.some((w) => w.word === ff.word),
+      "false friend was not dealt despite being due immediately",
+    );
+  });
+
+  // Fallback rule: Pool A dry (everything already studied) → draw 100% old;
+  // and with empty stats (Pools B/C dry) → draw 100% new.
+  check("empty-pool fallbacks fill the battle either way", () => {
+    const now = Date.now();
+    const allOld: WordStats = {};
+    for (const w of pool) {
+      allOld[w.word] = { seen: 1, correct: 1, wrong: 0, lastSeenAt: now - 30 * DAY_MS, ivl: 14, mark: "instant" };
+    }
+    const old = pickBattleWords(pool, WORDS_PER_BATTLE, allOld);
+    assert.equal(old.length, WORDS_PER_BATTLE, "no-new-words battle came up short");
+    const fresh = pickBattleWords(pool, WORDS_PER_BATTLE, {});
+    assert.equal(fresh.length, WORDS_PER_BATTLE, "no-old-words battle came up short");
+  });
+
   if (failures) {
     console.error(`\n${failures} check(s) failed`);
     process.exit(1);

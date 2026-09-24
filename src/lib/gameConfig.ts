@@ -70,3 +70,10 @@ export const ROOM_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
 export const HIGH_MS = 4_000;
 export const MEDIUM_MS = 7_000;
+
+// Answer-speed buckets for the SRS pool transitions (src/game/wordProgress.ts):
+// a correct answer faster than ANSWER_INSTANT_MS masters the word, faster than
+// ANSWER_SLOW_MS keeps it in learning, and anything slower (or a timeout)
+// counts as a blank.
+export const ANSWER_INSTANT_MS = 1_000;
+export const ANSWER_SLOW_MS = 4_000;

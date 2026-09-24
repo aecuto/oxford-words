@@ -332,7 +332,12 @@ export function useBattleRoom(code: string) {
       submittedWordRef.current = cur.wordIndex;
       const timedOutWord = cur.words[cur.wordIndex];
       if (timedOutWord) {
-        resultsRef.current.push({ word: timedOutWord.word, correct: false });
+        resultsRef.current.push({
+          word: timedOutWord.word,
+          correct: false,
+          ms: TURN_MS,
+          timeout: true,
+        });
         wordDetailsRef.current.push({
           wordIndex: cur.wordIndex,
           word: timedOutWord.word,
@@ -400,7 +405,14 @@ export function useBattleRoom(code: string) {
         correct,
         at: Date.now(),
       };
-      resultsRef.current.push({ word: current.word, correct });
+      // Response time + timeout flag drive the SRS pool transition
+      // (instant/slow/blank/false friend) in wordProgress.
+      resultsRef.current.push({
+        word: current.word,
+        correct,
+        ms: elapsed,
+        timeout: answer == null,
+      });
       wordDetailsRef.current.push({
         wordIndex: r.wordIndex,
         word: current.word,

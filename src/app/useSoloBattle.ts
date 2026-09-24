@@ -196,7 +196,8 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
       result: "correct" | "wrong" | "timeout",
       dealtDamage: number,
       crit: boolean,
-      nextStreak: number
+      nextStreak: number,
+      ms: number
     ) => {
       const current = words[wordIndex];
       const isLast = wordIndex + 1 >= words.length;
@@ -204,9 +205,13 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
       const beforeBot = botHpRef.current;
 
       if (current) {
+        // Response time + timeout flag drive the SRS pool transition
+        // (instant/slow/blank/false friend) in wordProgress.
         resultsRef.current.push({
           word: current.word,
           correct: result === "correct",
+          ms,
+          timeout: result === "timeout",
         });
         setWordResults((prev) => {
           const next = [...prev];
@@ -302,10 +307,10 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
         const res = computeHit(elapsed, streak);
         const dealt = res?.damage ?? 0;
         setAnswerState("correct");
-        finishWord("correct", dealt, res?.crit ?? false, streak + 1);
+        finishWord("correct", dealt, res?.crit ?? false, streak + 1, elapsed);
       } else {
         setAnswerState(timeout ? "timeout" : "wrong");
-        finishWord(timeout ? "timeout" : "wrong", 0, false, 0);
+        finishWord(timeout ? "timeout" : "wrong", 0, false, 0, elapsed);
       }
     },
     [answerState, outcome, words, wordIndex, startedAt, streak, finishWord]
