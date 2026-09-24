@@ -85,14 +85,21 @@ export function HpBar({ name, hp, max, streak, flip = false }: HpBarProps) {
           )}
         >
           <div
-            className="h-full bg-red-400/60 dark:bg-red-500/40 transition-[width] duration-300 ease-out"
-            style={{ width: `${ghost * 100}%` }}
+            className={cx(
+              "h-full w-full bg-red-400/60 dark:bg-red-500/40 transition-transform duration-300 ease-out",
+              flip ? "origin-right" : "origin-left"
+            )}
+            style={{ transform: `scaleX(${ghost})` }}
           />
         </div>
         <div className={cx("absolute inset-0 flex", flip && "justify-end")}>
           <div
-            className={cx("h-full", barColor(ratio))}
-            style={{ width: `${ratio * 100}%` }}
+            className={cx(
+              "h-full w-full",
+              flip ? "origin-right" : "origin-left",
+              barColor(ratio)
+            )}
+            style={{ transform: `scaleX(${ratio})` }}
           />
         </div>
         {hitCount > 0 && (

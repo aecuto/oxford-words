@@ -49,13 +49,16 @@ body {
 
 /* Turn timer bar: drains 100% → 0% linearly over the whole turn. CSS-owned
    so the browser interpolates it at display refresh rate, independent of
-   React re-renders; TimerBar restarts it per turn via a key change. */
+   React re-renders; TimerBar restarts it per turn via a key change. Animates
+   scaleX (compositor-only) instead of width, which would force layout+paint
+   every frame and jank on mobile. The fill element must be w-full with
+   origin-left so the scale shrinks it from the right. */
 @keyframes timerDrain {
   from {
-    width: 100%;
+    transform: scaleX(1);
   }
   to {
-    width: 0%;
+    transform: scaleX(0);
   }
 }
 

@@ -46,7 +46,7 @@ export function TimerBar({ startedAt, totalMs }: TimerBarProps) {
         <div
           key={startedAt ?? "idle"}
           className={cx(
-            "h-full rounded-full transition-colors",
+            "h-full w-full origin-left rounded-full transition-colors",
             zone === "fast"
               ? "bg-emerald-500"
               : zone === "mid"
@@ -55,7 +55,7 @@ export function TimerBar({ startedAt, totalMs }: TimerBarProps) {
           )}
           style={
             startedAt === null
-              ? { width: "100%" }
+              ? undefined
               : { animation: `timerDrain ${totalMs}ms linear forwards` }
           }
         />
