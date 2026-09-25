@@ -44,7 +44,7 @@ export function DailyGoal({
       </div>
       <div
         className={`mt-2 flex items-center gap-1.5 text-sm sm:text-base font-bold ${
-          streak > 0 ? "text-amber-400" : "text-gray-500"
+          daily?.met ? "text-amber-400" : "text-gray-500"
         }`}
       >
         <FireIcon className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]" />
