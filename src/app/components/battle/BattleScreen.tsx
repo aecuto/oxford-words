@@ -12,7 +12,7 @@ import { AnswerGrid } from "./AnswerGrid";
 import { DamagePopup } from "./DamagePopup";
 import { FlashOverlay, useCritEffects } from "./EffectLayer";
 import { HpBar } from "./HpBar";
-import { SoundToggle } from "./SoundToggle";
+import { Logo } from "../Logo";
 import { TimerBar } from "./TimerBar";
 import { WordPlayBox } from "./WordPlayBox";
 import { WordProgress } from "./WordProgress";
@@ -78,6 +78,7 @@ export function BattleScreen({
   useEffect(() => {
     preloadSfx();
   }, []);
+
   useEffect(() => {
     preloadWordAudio(view.word?.pronounceURL);
   }, [view.word?.pronounceURL]);
@@ -85,11 +86,13 @@ export function BattleScreen({
   return (
     <div
       className={cx(
-        "relative mx-auto flex min-h-screen w-full max-w-screen-md flex-col justify-center p-4 sm:p-6 select-none",
+        "relative mx-auto flex min-h-screen w-full max-w-screen-md flex-col p-4 sm:p-6 select-none",
         shake && "animate-shake",
       )}
     >
       <FlashOverlay active={flash} />
+
+      <Logo size="sm" className="mb-2" />
 
       {/* Word HUD — top */}
       <div className="flex items-center gap-3 mb-2">
@@ -106,13 +109,44 @@ export function BattleScreen({
 
       {/* Timer — stopped/hidden once the battle has ended */}
       {!ended && (
-        <div className="flex items-center gap-3 mb-2">
-          <div className="flex-1">
-            <TimerBar startedAt={view.turnStartedAt} totalMs={TURN_MS} />
-          </div>
-          <SoundToggle />
+        <div className="mb-2">
+          <TimerBar startedAt={view.turnStartedAt} totalMs={TURN_MS} />
         </div>
       )}
+
+      {/* HP bars — top HUD, full width so both bars stay readable on phones */}
+      <div className="relative flex w-full items-start gap-1.5 sm:gap-3 mt-2 mb-3">
+        <div className="relative flex-1 min-w-0">
+          <HpBar
+            name={view.myName}
+            hp={view.myHp}
+            max={myMaxHp}
+            streak={view.myStreak}
+          />
+          {view.popups
+            .filter((p) => p.side === "me")
+            .map((p) => (
+              <DamagePopup key={p.id} popup={p} below />
+            ))}
+        </div>
+        <span className="font-black text-sm sm:text-2xl text-gray-400 dark:text-gray-500 pt-1.5 sm:pt-4 shrink-0">
+          VS
+        </span>
+        <div className="relative flex-1 min-w-0">
+          <HpBar
+            name={view.oppName}
+            hp={view.oppHp}
+            max={oppMaxHp}
+            streak={view.oppStreak}
+            flip
+          />
+          {view.popups
+            .filter((p) => p.side === "opp")
+            .map((p) => (
+              <DamagePopup key={p.id} popup={p} flip below />
+            ))}
+        </div>
+      </div>
 
       {/* Word box — tap to play the sound; the word and answers appear inside.
           Once the battle ends, it is replaced by the view result box. */}
@@ -177,40 +211,6 @@ export function BattleScreen({
             )}
           </>
         )}
-      </div>
-
-      {/* HP bars — bottom; damage popups drop into the reserved space below */}
-      <div className="relative flex items-start gap-2 sm:gap-3 mt-4 mb-12">
-        <div className="relative flex-1">
-          <HpBar
-            name={view.myName}
-            hp={view.myHp}
-            max={myMaxHp}
-            streak={view.myStreak}
-          />
-          {view.popups
-            .filter((p) => p.side === "me")
-            .map((p) => (
-              <DamagePopup key={p.id} popup={p} below />
-            ))}
-        </div>
-        <span className="font-black text-base sm:text-2xl text-gray-400 dark:text-gray-500 pt-2 sm:pt-4">
-          VS
-        </span>
-        <div className="relative flex-1">
-          <HpBar
-            name={view.oppName}
-            hp={view.oppHp}
-            max={oppMaxHp}
-            streak={view.oppStreak}
-            flip
-          />
-          {view.popups
-            .filter((p) => p.side === "opp")
-            .map((p) => (
-              <DamagePopup key={p.id} popup={p} flip below />
-            ))}
-        </div>
       </div>
     </div>
   );

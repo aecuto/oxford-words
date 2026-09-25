@@ -44,16 +44,21 @@ export function HpBar({ name, hp, max, streak, flip = false }: HpBarProps) {
     <div className="flex-1 min-w-0">
       <div
         className={cx(
-          "flex items-center gap-2 sm:gap-2.5 mb-1.5 text-sm sm:text-base",
+          "flex items-center gap-1.5 sm:gap-2.5 mb-1 sm:mb-1.5 text-xs sm:text-base",
           flip && "flex-row-reverse"
         )}
       >
-        <span className="font-extrabold text-gray-900 dark:text-gray-100 truncate max-w-[45%] sm:max-w-[50%] tracking-wide">
+        <span
+          className={cx(
+            "font-extrabold text-gray-900 dark:text-gray-100 truncate min-w-0 flex-1 sm:flex-none sm:max-w-[50%] tracking-wide",
+            flip && "text-right"
+          )}
+        >
           {name}
         </span>
         <span
           className={cx(
-            "text-xs sm:text-sm font-black px-1.5 sm:px-2 py-0.5 rounded-md",
+            "text-[10px] sm:text-sm font-black px-1 sm:px-2 py-0.5 rounded-md shrink-0",
             charged
               ? "bg-yellow-400 text-yellow-950"
               : streak >= 1
@@ -64,14 +69,14 @@ export function HpBar({ name, hp, max, streak, flip = false }: HpBarProps) {
           x{streak}
         </span>
         {charged && (
-          <span className="text-[10px] sm:text-xs font-black tracking-widest text-yellow-500 dark:text-yellow-300">
+          <span className="text-[9px] sm:text-xs font-black tracking-wider sm:tracking-widest text-yellow-500 dark:text-yellow-300 shrink-0">
             CRIT
           </span>
         )}
       </div>
       <div
         className={cx(
-          "relative h-6 sm:h-7 rounded-full border-2 bg-gray-200 dark:bg-gray-800 overflow-hidden",
+          "relative h-5 sm:h-7 rounded-full border-2 bg-gray-200 dark:bg-gray-800 overflow-hidden",
           charged
             ? "border-yellow-400 shadow-[0_0_10px_rgba(250,204,21,0.45)]"
             : "border-gray-800 dark:border-gray-300",
@@ -112,7 +117,7 @@ export function HpBar({ name, hp, max, streak, flip = false }: HpBarProps) {
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <span
             className={cx(
-              "text-[11px] sm:text-xs font-black tabular-nums tracking-wide text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]",
+              "text-[10px] sm:text-xs font-black tabular-nums tracking-wide text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]",
               low && "animate-pulse"
             )}
           >

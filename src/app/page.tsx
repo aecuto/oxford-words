@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardBody } from "./components/ui/Card";
 import { Button } from "./components/ui/Button";
+import { Logo } from "./components/Logo";
 import { ProgressPanel } from "./components/ProgressPanel";
 import { useStoredName } from "./useStoredName";
 import {
@@ -152,14 +153,7 @@ export default function BattleHub() {
   return (
     <div className="dark min-h-dvh pt-safe pb-safe flex flex-col">
       <div className="px-3 sm:px-6 m-auto w-full max-w-screen-md pt-6 sm:pt-10 pb-8 sm:pb-12">
-        <div className="text-center mb-4">
-          <p className="text-xs sm:text-sm font-black uppercase tracking-[0.3em] text-gray-500">
-            BATTLE
-          </p>
-          <h1 className="text-4xl sm:text-5xl font-black tracking-wide leading-none mt-1.5 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent select-none">
-            Oxford Words
-          </h1>
-        </div>
+        <Logo className="mb-4" />
 
         <ProgressPanel />
 

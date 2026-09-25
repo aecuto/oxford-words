@@ -41,24 +41,30 @@ export const SOLO_BOT: SoloBotConfig = {
   // Miss penalty: MAX_HP / hit = 20, so a battle always plays all 20 words
   // and every answer feeds the SRS loop; skilled runs can still KO the bot.
   hit: 5,
-  // Answers most words like a real player with medium-pace hits, but its
-  // misses are free (only the hard bot pays for them), so the race is fair.
-  accuracy: 0.7,
-  minThinkMs: 2_200,
-  maxThinkMs: 6_500,
+  // On the 2-option grid a blind coin flip already lands 50%, so 0.8 reads as
+  // a player who half-knows the word instead of one missing a binary call.
+  // Its misses are free (only the hard bot pays for them), so the race stays
+  // fair; think time straddles HIGH_MS so its hits stay medium-paced, not a
+  // machine gun of 6s.
+  accuracy: 0.8,
+  minThinkMs: 1_800,
+  maxThinkMs: 5_000,
 };
 
-// Hard bot answers almost every word and thinks faster than HIGH_MS, so
+// Hard bot answers nearly every word and thinks faster than HIGH_MS, so
 // computeHit(thinkMs, streak) lands every answer in the top damage tier with
-// streak crits, and its rare misses still cost it WRONG_ANSWER_HIT. The extra
-// HP means you must out-race it to the KO, not out-last it.
+// streak crits, and its rare misses still cost it WRONG_ANSWER_HIT. Tuned for
+// the 2-option grid: 0.95 because a binary pick is near-free for a bot that
+// "knows" the word, and a quicker 0.9–3.4s window to match how much faster
+// players now read-and-compare two meanings. The extra HP means you must
+// out-race it to the KO, not out-last it.
 export const SOLO_BOT_HARD: SoloBotConfig = {
   name: "PROF",
   hp: 140,
   hit: SOLO_BOT.hit,
-  accuracy: 0.9,
-  minThinkMs: 1_000,
-  maxThinkMs: 3_800,
+  accuracy: 0.95,
+  minThinkMs: 900,
+  maxThinkMs: 3_400,
 };
 
 export function botConfigFor(difficulty: SoloDifficulty): SoloBotConfig {
