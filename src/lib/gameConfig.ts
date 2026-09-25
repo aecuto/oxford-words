@@ -6,10 +6,10 @@ export const TURN_GRACE_MS = 1_500;
 export const WORDS_PER_BATTLE = 20;
 export const MAX_WORDS_PER_ROOM = 30;
 
-// Word-list level the game plays with ("3000" or "5000"). The player's pick
-// is persisted in localStorage via src/game/wordLevel.ts; this type anchors
-// the two valid file names (words.<level>.th.json).
-export type WordLevel = "3000" | "5000";
+// Word list the game plays with ("3000" or "5000"). The player's pick is
+// persisted in localStorage via src/game/wordList.ts; this type anchors the
+// two valid file names (words.<list>.th.json).
+export type WordList = "3000" | "5000";
 
 // The 2-option decision rule on the battle screen: every word shows the
 // correct meaning plus one distractor, so the pick is a clean binary call —

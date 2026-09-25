@@ -7,7 +7,7 @@ import { Card, CardBody } from "./components/ui/Card";
 import { Button } from "./components/ui/Button";
 import { Logo } from "./components/Logo";
 import { ProgressPanel } from "./components/ProgressPanel";
-import { WordLevelSelect } from "./components/WordLevelSelect";
+import { WordListSelect } from "./components/WordListSelect";
 import { useStoredName } from "./useStoredName";
 import {
   pickBattleWords,
@@ -15,7 +15,7 @@ import {
   mergeWordLists,
 } from "../game/wordPool";
 import { loadWordStats } from "../game/wordProgress";
-import { loadWordLevel, saveWordLevel } from "../game/wordLevel";
+import { loadWordList, saveWordList } from "../game/wordList";
 import { loadBattleSummary } from "../game/battleSummary";
 import {
   closeRoom,
@@ -30,7 +30,7 @@ import {
   SOLO_BOT,
   TURN_MS,
   WORDS_PER_BATTLE,
-  type WordLevel,
+  type WordList,
 } from "../lib/gameConfig";
 import { describeAuthError, ensureAnonAuth } from "../lib/firebase";
 import type { ClientRoom, OpenRoom } from "../game/types";
@@ -70,25 +70,25 @@ export default function BattleHub() {
     { outcome: "win" | "lose" | "draw"; correct: number; answered: number } | null
   >(null);
   // Active word list (3000/5000). Read after mount like lastSolo so the
-  // hydrated render matches SSR; the level flows into ProgressPanel as a
+  // hydrated render matches SSR; the list flows into ProgressPanel as a
   // prop so only the pool totals refresh — progress stats never reload.
-  const [wordLevel, setWordLevel] = useState<WordLevel>("3000");
+  const [wordList, setWordList] = useState<WordList>("3000");
   const startingRef = useRef(false);
 
   useEffect(() => {
     const s = loadBattleSummary();
-    /* eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot: read session storage + the stored word level after mount to avoid SSR/hydration mismatch */
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot: read session storage + the stored word list after mount to avoid SSR/hydration mismatch */
     setLastSolo(
       s && s.mode === "solo"
         ? { outcome: s.outcome, correct: s.correct, answered: s.answered }
         : null,
     );
-    setWordLevel(loadWordLevel());
+    setWordList(loadWordList());
   }, []);
 
-  const changeWordLevel = (level: WordLevel) => {
-    setWordLevel(level);
-    saveWordLevel(level);
+  const changeWordList = (list: WordList) => {
+    setWordList(list);
+    saveWordList(list);
   };
 
   useEffect(() => {
@@ -201,10 +201,10 @@ export default function BattleHub() {
       <div className="px-3 sm:px-6 m-auto w-full max-w-screen-md pt-6 sm:pt-10 pb-8 sm:pb-12">
         <Logo className="mb-4" />
 
-        <ProgressPanel level={wordLevel} />
+        <ProgressPanel list={wordList} />
 
         <div className="mb-3 sm:mb-4">
-          <WordLevelSelect value={wordLevel} onChange={changeWordLevel} />
+          <WordListSelect value={wordList} onChange={changeWordList} />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 items-stretch gap-3 sm:gap-4 lg:gap-5">

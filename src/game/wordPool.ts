@@ -1,7 +1,7 @@
 import { flatMap, sampleSize, shuffle, uniq } from "lodash";
 import type { Word } from "./types";
-import { ANSWER_OPTIONS, WORDS_PER_BATTLE, type WordLevel } from "../lib/gameConfig";
-import { loadWordLevel } from "./wordLevel";
+import { ANSWER_OPTIONS, WORDS_PER_BATTLE, type WordList } from "../lib/gameConfig";
+import { loadWordList } from "./wordList";
 import type { BattleWord } from "./types";
 import {
   isDue,
@@ -254,30 +254,30 @@ export function pickBattleWords(
   return toBattleWords(picked);
 }
 
-// The word data lives in public/ as two disjoint per-level files: the
+// The word data lives in public/ as two disjoint per-list files: the
 // translator emits pre-deduped, answerable-only words with words.3000.th.json
 // holding the ox3000 list and words.5000.th.json only the extra ox5000 words.
-// Levels are exclusive — 3000 plays only the core words, 5000 only the
-// advanced ones — so a level load is a single fetch, no merging. Data is
+// The lists are exclusive — 3000 plays only the core words, 5000 only the
+// advanced ones — so a list load is a single fetch, no merging. Data is
 // fetched once per session instead of being imported into the JS bundle, so
 // the battle page ships kilobytes of code instead of megabytes of JSON to
-// download and parse on the main thread. The default level is the player's
-// persisted pick (localStorage via wordLevel.ts), evaluated per call — so a
-// level switch applies from the next battle on.
-let poolPromises: Partial<Record<WordLevel, Promise<Word[]>>> = {};
+// download and parse on the main thread. The default list is the player's
+// persisted pick (localStorage via wordList.ts), evaluated per call — so a
+// list switch applies from the next battle on.
+let poolPromises: Partial<Record<WordList, Promise<Word[]>>> = {};
 
-async function fetchLevel(level: WordLevel): Promise<Word[]> {
-  const res = await fetch(`/words.${level}.th.json`);
-  if (!res.ok) throw new Error(`words.${level}.th.json: HTTP ${res.status}`);
+async function fetchList(list: WordList): Promise<Word[]> {
+  const res = await fetch(`/words.${list}.th.json`);
+  if (!res.ok) throw new Error(`words.${list}.th.json: HTTP ${res.status}`);
   return res.json() as Promise<Word[]>;
 }
 
-export function loadWordPool(level: WordLevel = loadWordLevel()): Promise<Word[]> {
-  poolPromises[level] ??= fetchLevel(level).then((all) => {
+export function loadWordPool(list: WordList = loadWordList()): Promise<Word[]> {
+  poolPromises[list] ??= fetchList(list).then((all) => {
     // The translator already dedupes and drops unanswerable entries; keep
     // both runtime filters anyway — dedupeWords must stay applied so
     // pickBattleWords can never deal the same headword twice.
     return dedupeWords(all.filter((w) => getCorrectAnswer(w) !== ""));
   });
-  return poolPromises[level];
+  return poolPromises[list];
 }

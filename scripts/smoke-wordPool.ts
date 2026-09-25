@@ -18,15 +18,15 @@ import type { BattleWord, Word } from "../src/game/types";
 const DAY_MS = 86_400_000;
 const BATTLES = 100;
 
-const readLevel = (name: string): Word[] =>
+const readList = (name: string): Word[] =>
   JSON.parse(
     fs.readFileSync(path.join(process.cwd(), "public", name), "utf8"),
   );
 
-const raw3000: Word[] = readLevel("words.3000.th.json");
-const raw5000: Word[] = readLevel("words.5000.th.json");
+const raw3000: Word[] = readList("words.3000.th.json");
+const raw5000: Word[] = readList("words.5000.th.json");
 
-// loadWordPool fetches "/words.<level>.th.json" in the browser; serve the
+// loadWordPool fetches "/words.<list>.th.json" in the browser; serve the
 // same files from disk so the real load path (answerable filter, dedupe,
 // 3000→5000 fallback) runs.
 globalThis.fetch = (async (input: RequestInfo | URL) => ({
@@ -73,12 +73,12 @@ async function main() {
   const pool5000 = await loadWordPool("5000");
   const poolWords = new Set(pool.map((w) => w.word));
 
-  check("level files are pre-deduped, answerable, disjoint (fixture)", () => {
+  check("list files are pre-deduped, answerable, disjoint (fixture)", () => {
     const words3000 = new Set(raw3000.map((w) => w.word));
     const words5000 = new Set(raw5000.map((w) => w.word));
     assert.ok(raw5000.length > 0, "5000 file is empty");
     for (const w of words3000) {
-      assert.ok(!words5000.has(w), `"${w}" appears in both level files`);
+      assert.ok(!words5000.has(w), `"${w}" appears in both list files`);
     }
     for (const [name, raw] of [
       ["3000", raw3000],

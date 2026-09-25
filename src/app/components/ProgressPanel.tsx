@@ -14,7 +14,7 @@ import {
 } from "../../game/wordProgress";
 import { fetchProgress, type Progress } from "../../game/progressService";
 import { ensureAnonAuth } from "../../lib/firebase";
-import type { WordLevel } from "../../lib/gameConfig";
+import type { WordList } from "../../lib/gameConfig";
 
 function pct(part: number, total: number): string {
   if (total <= 0) return "0%";
@@ -44,17 +44,17 @@ function Stat({
   );
 }
 
-export function ProgressPanel({ level }: { level?: WordLevel }) {
+export function ProgressPanel({ list }: { list?: WordList }) {
   const [poolTotal, setPoolTotal] = useState(0);
   const [stats, setStats] = useState<WordStats>({});
   const [record, setRecord] = useState<Progress | null>(null);
   const [daily, setDaily] = useState<DailyProgress | null>(null);
 
-  // Pool denominator only: refetches on a word-list switch (both levels stay
+  // Pool denominator only: refetches on a word-list switch (both lists stay
   // memoized, so this is instant after the first look at each).
   useEffect(() => {
     let alive = true;
-    loadWordPool(level)
+    loadWordPool(list)
       .then((pool) => {
         if (!alive) return;
         setPoolTotal(pool.length);
@@ -63,10 +63,10 @@ export function ProgressPanel({ level }: { level?: WordLevel }) {
     return () => {
       alive = false;
     };
-  }, [level]);
+  }, [list]);
 
-  // Progress itself never reloads on a level switch — the SRS stats, the
-  // daily goal and the match record are level-independent.
+  // Progress itself never reloads on a list switch — the SRS stats, the
+  // daily goal and the match record are list-independent.
   useEffect(() => {
     let alive = true;
     Promise.resolve(loadWordStats()).then((s) => {
