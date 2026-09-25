@@ -12,7 +12,7 @@ interface WordData {
   level: string;
   ox3000: boolean;
   ox5000: boolean;
-  pronounce: string;
+  pronounceURL: string;
 }
 
 fs.readFile(path.join(__dirname, "data.txt"), async (err, data) => {
@@ -33,12 +33,12 @@ fs.readFile(path.join(__dirname, "data.txt"), async (err, data) => {
       const pronouncePath =
         item.querySelector("div .pron-us")?.getAttribute("data-src-mp3") || "-";
 
-      const pronounce =
+      const pronounceURL =
         pronouncePath !== "-"
           ? "https://www.oxfordlearnersdictionaries.com" + pronouncePath
           : "-";
 
-      result.push({ word, type, level, ox3000, ox5000, pronounce });
+      result.push({ word, type, level, ox3000, ox5000, pronounceURL });
     }
   }
 

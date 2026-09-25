@@ -11,7 +11,7 @@ export type Word = {
   level: string;
   ox3000: boolean;
   ox5000: boolean;
-  pronounce: string;
+  pronounceURL: string;
   entries: TEntry[];
 };
 
@@ -21,7 +21,7 @@ export type BattleWord = {
   word: string;
   type: string;
   level: string;
-  pronounce: string;
+  pronounceURL: string;
   correctAnswer: string;
   options: string[];
 };

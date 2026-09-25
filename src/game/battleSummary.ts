@@ -2,7 +2,7 @@ export type BattleWordDetail = {
   word: string;
   /** part of speech, e.g. "noun" | "verb" */
   type?: string;
-  pronounce?: string;
+  pronounceURL?: string;
   /** correct answer (Thai translation) */
   answer?: string;
   correct: boolean;

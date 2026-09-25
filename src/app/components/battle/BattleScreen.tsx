@@ -79,8 +79,8 @@ export function BattleScreen({
     preloadSfx();
   }, []);
   useEffect(() => {
-    preloadWordAudio(view.word?.pronounce);
-  }, [view.word?.pronounce]);
+    preloadWordAudio(view.word?.pronounceURL);
+  }, [view.word?.pronounceURL]);
 
   return (
     <div

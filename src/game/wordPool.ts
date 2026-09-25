@@ -59,7 +59,7 @@ export function buildBattleWord(word: Word, pool: Word[]): BattleWord {
     word: word.word,
     type: word.type,
     level: word.level,
-    pronounce: word.pronounce,
+    pronounceURL: word.pronounceURL,
     correctAnswer: getCorrectAnswer(word),
     options: buildAnswers(word, pool),
   };
@@ -232,7 +232,7 @@ function toBattleWords(picked: Word[]): BattleWord[] {
       word: w.word,
       type: w.type,
       level: w.level,
-      pronounce: w.pronounce,
+      pronounceURL: w.pronounceURL,
       correctAnswer: correct,
       options,
     };
@@ -264,7 +264,7 @@ export function pickBattleWords(
   return toBattleWords(picked);
 }
 
-// The 3MB word data lives in public/ and is fetched once per session instead
+// The ~2MB word data lives in public/ and is fetched once per session instead
 // of being imported into the JS bundle, so the battle page ships kilobytes of
 // code instead of megabytes of JSON to download and parse on the main thread.
 let poolPromise: Promise<Word[]> | null = null;

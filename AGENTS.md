@@ -6,8 +6,8 @@
 - There is no test framework. `pnpm smoke` runs `scripts/smoke-wordPool.ts` (tsx, no services needed): it simulates PvP and PvE battles against the real word data and fails on duplicate words, missing/short option grids, or back-to-back repeats. Run it after touching word picking, the pool, or SRS logic.
 
 ## Word data pipeline
-- `public/words.th.json` is **generated** (~3MB) and fetched at runtime by `loadWordPool()` in `src/game/wordPool.ts` — never import it into the bundle; the battle page fetches it once per session.
-- Regeneration is two steps: `pnpm fetch-oxford-words` (scrapper: paste the Oxford 3000–5000 `<ul>` HTML into `scrapper/data.txt` → `scrapper/words.json`), then `tsx translator/index.ts` (merges with the Thai lexicon CSV → `public/words.th.json` + `translator/missing.txt`).
+- `public/words.th.json` is **generated** (~2.3MB, minified single line) and fetched at runtime by `loadWordPool()` in `src/game/wordPool.ts` — never import it into the bundle; the battle page fetches it once per session.
+- Regeneration is two steps: `pnpm fetch-oxford-words` (scrapper: paste the Oxford 3000–5000 `<ul>` HTML into `tools/scrapper/data.txt` → `tools/scrapper/words.json`), then `tsx tools/translator/index.ts` (merges with the Thai lexicon CSV → `public/words.th.json` + `tools/translator/missing.txt`).
 - The raw data lists a headword once per part of speech, so it is full of duplicates. `dedupeWords()` must stay applied in `loadWordPool`/`pickBattleWords` or the same word gets dealt twice in one battle — `pnpm smoke` catches this.
 
 ## Word picking (PvP and PvE share one pipeline)

@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "smoke": "tsx scripts/smoke-wordPool.ts",
-    "fetch-oxford-words": "tsx scrapper/index.ts"
+    "fetch-oxford-words": "tsx tools/scrapper/index.ts"
   },
   "dependencies": {
     "@emotion/css": "^11.13.5",

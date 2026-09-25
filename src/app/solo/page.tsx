@@ -70,7 +70,7 @@ function SoloGame({ difficulty }: { difficulty: SoloDifficulty }) {
         myMaxHp={MAX_HP}
         oppMaxHp={bot.hp}
         onAnswer={submit}
-        onPlayWord={() => playWordAudio(view.word?.pronounce)}
+        onPlayWord={() => playWordAudio(view.word?.pronounceURL)}
         onExit={() => router.push("/")}
         onViewResult={() =>
           router.push(

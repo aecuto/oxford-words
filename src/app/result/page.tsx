@@ -219,11 +219,11 @@ function ResultPage() {
                   >
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <button
-                        onClick={() => playWordAudio(m.pronounce)}
+                        onClick={() => playWordAudio(m.pronounceURL)}
                         className="inline-flex items-center gap-1.5 text-sm font-bold text-gray-700 dark:text-gray-200 hover:text-blue-500 dark:hover:text-blue-400 transition-colors touch-manipulation select-none"
                       >
                         {m.word}
-                        {m.pronounce && (
+                        {m.pronounceURL && (
                           <SpeakerWaveIcon className="h-3.5 w-3.5 opacity-60" />
                         )}
                       </button>

@@ -503,7 +503,7 @@ export function useBattleRoom(code: string) {
     const words: BattleWordDetail[] = wordDetailsRef.current.map((d) => ({
       word: d.word,
       type: d.type,
-      pronounce: room.words.find((w) => w.word === d.word)?.pronounce,
+      pronounceURL: room.words.find((w) => w.word === d.word)?.pronounceURL,
       answer: room.words.find((w) => w.word === d.word)?.correctAnswer,
       correct: d.correct,
       dealt: myHits

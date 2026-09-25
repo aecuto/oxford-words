@@ -19,7 +19,7 @@ type WordFilter = "learning" | "mastered";
 
 type ListedWord = {
   word: string;
-  pronounce: string;
+  pronounceURL: string;
   type: string;
   level: string;
   thai: string;
@@ -42,7 +42,7 @@ function toListedWords(pool: Word[], stats: WordStats): ListedWord[] {
       const w = byWord.get(word)!;
       return {
         word,
-        pronounce: w.pronounce,
+        pronounceURL: w.pronounceURL,
         type: w.type,
         level: w.level,
         thai: getCorrectAnswer(w),
@@ -113,8 +113,8 @@ function WordRow({
         {dueNow ? "due now" : `in ${daysLeft}d`}
       </span>
       <button
-        onClick={() => playWordAudio(item.pronounce)}
-        disabled={!item.pronounce}
+        onClick={() => playWordAudio(item.pronounceURL)}
+        disabled={!item.pronounceURL}
         aria-label={`Play ${item.word}`}
         className="shrink-0 p-2 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-40 transition-colors"
       >

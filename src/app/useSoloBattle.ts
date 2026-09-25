@@ -259,7 +259,7 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
         wordDetailsRef.current.push({
           word: current.word,
           type: current.type,
-          pronounce: current.pronounce,
+          pronounceURL: current.pronounceURL,
           answer: current.correctAnswer,
           correct: result === "correct",
           instant,

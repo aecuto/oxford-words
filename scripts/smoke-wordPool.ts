@@ -163,7 +163,7 @@ async function main() {
       level: "a1",
       ox3000: true,
       ox5000: false,
-      pronounce: "",
+      pronounceURL: "",
       entries: [{ type: "N", thai: [`t${i}`] }],
     });
     const tiny = [0, 1, 2, 3, 4].map(fake);

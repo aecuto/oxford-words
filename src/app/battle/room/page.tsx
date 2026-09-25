@@ -122,7 +122,7 @@ function RoomPage() {
         myMaxHp={MAX_HP}
         oppMaxHp={MAX_HP}
         onAnswer={submit}
-        onPlayWord={() => playWordAudio(view.word?.pronounce)}
+        onPlayWord={() => playWordAudio(view.word?.pronounceURL)}
         onExit={() => router.push("/")}
         onViewResult={() =>
           router.push(`/result?outcome=${view.outcome}&mode=room`)

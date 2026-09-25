@@ -20,7 +20,7 @@ interface OxWord {
   level: string;
   ox3000: boolean;
   ox5000: boolean;
-  pronounce: string;
+  pronounceURL: string;
 }
 
 interface WordEntry {
@@ -36,7 +36,7 @@ interface ResultWord extends OxWord {
 // --- paths ---
 const CSV_PATH = path.resolve(__dirname, "etlex-utf8.csv");
 const WORDS_PATH = path.resolve(__dirname, "../scrapper/words.json");
-const OUTPUT_PATH = path.resolve(__dirname, "../public/words.th.json");
+const OUTPUT_PATH = path.resolve(__dirname, "../../public/words.th.json");
 const MISSING_PATH = path.resolve(__dirname, "missing.txt");
 
 // --- build entries from matched rows ---
@@ -90,14 +90,31 @@ function main() {
     trim: true,
   });
 
-  const oxWords: OxWord[] = JSON.parse(fs.readFileSync(WORDS_PATH, "utf-8"));
+  // scrapper now emits pronounceURL; older words.json artifacts used
+  // pronounce, so accept either until the next full scrape overwrites them
+  const oxWords: OxWord[] = (
+    JSON.parse(fs.readFileSync(WORDS_PATH, "utf-8")) as {
+      pronounceURL?: string;
+      pronounce?: string;
+      word: string;
+      type: string;
+      level: string;
+      ox3000: boolean;
+      ox5000: boolean;
+    }[]
+  ).map(({ pronounce, pronounceURL, ...rest }) => ({
+    ...rest,
+    pronounceURL: pronounceURL ?? pronounce ?? "-",
+  }));
 
   const result: ResultWord[] = oxWords.map((base) =>
     buildWordEntry(base, csvRows),
   );
 
   // save words.th.json
-  fs.writeFileSync(OUTPUT_PATH, JSON.stringify(result, null, 2), "utf-8");
+  // minified: pretty-printing cost ~40% on disk with no benefit — the file is
+  // fetched once per session and Vercel already compresses it on the wire
+  fs.writeFileSync(OUTPUT_PATH, JSON.stringify(result), "utf-8");
 
   // save missing.txt
   const missing = result
