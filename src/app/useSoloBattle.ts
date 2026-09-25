@@ -18,8 +18,6 @@ import {
   TURN_MS,
   WORDS_PER_BATTLE,
   WRONG_ANSWER_HIT,
-  botConfigFor,
-  type SoloDifficulty,
 } from "../lib/gameConfig";
 import { loadBattleSummary, saveBattleSummary, type BattleWordDetail } from "../game/battleSummary";
 import { useDamagePopups } from "./useDamagePopups";
@@ -31,8 +29,8 @@ type PendingBotAnswer = {
   thinkMs: number;
 };
 
-export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
-  const bot = botConfigFor(difficulty);
+export function useSoloBattle() {
+  const bot = SOLO_BOT;
 
   const [words, setWords] = useState<BattleWord[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -89,17 +87,15 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
       } else {
         botStreakRef.current = 0;
         setBotStreak(0);
-        // Only the hard bot plays by player rules: its misses hurt it. The
-        // easy bot barely aims, so punishing its misses would end battles
-        // before they start.
-        if (difficulty !== "hard") return;
+        // The bot pays for its own misses — same price the player pays — so
+        // its ~15 HP of self-damage per battle is part of the KO-race math.
         botHpRef.current = Math.max(0, botHpRef.current - WRONG_ANSWER_HIT);
         setBotHp(botHpRef.current);
         spawnPopup("opp", WRONG_ANSWER_HIT, false);
         if (botHpRef.current <= 0) endBattle("win");
       }
     },
-    [endBattle, spawnPopup, difficulty]
+    [endBattle, spawnPopup]
   );
 
   // Pre-roll the bot's answer for the word and land it after its own think
@@ -353,7 +349,6 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
     saveBattleSummary({
       outcome,
       mode: "solo",
-      difficulty,
       opponent: bot.name,
       total: wordsRef.current.length,
       answered: words.length,
@@ -370,7 +365,7 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
       statsRef.current = saveWordResults(resultsRef.current);
       resultsRef.current = [];
     }
-  }, [outcome, streak, difficulty, bot.name]);
+  }, [outcome, streak, bot.name]);
 
   const view = useMemo(() => {
     const current = words[wordIndex] ?? null;

@@ -17,7 +17,6 @@ export type BattleWordDetail = {
 export type BattleSummary = {
   outcome: "win" | "lose" | "draw";
   mode: "solo" | "room";
-  difficulty?: "easy" | "hard";
   opponent?: string;
   roomCode?: string;
   total: number;

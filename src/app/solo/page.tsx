@@ -1,48 +1,16 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { useRouter } from "next/navigation";
 import { useSoloBattle } from "../useSoloBattle";
 import { BattleScreen } from "../components/battle/BattleScreen";
 import { Button } from "../components/ui/Button";
 import { playWordAudio } from "../playWordAudio";
-import {
-  MAX_HP,
-  botConfigFor,
-  type SoloDifficulty,
-} from "../../lib/gameConfig";
-
-// Deep link ?difficulty=easy|hard (lobby VS BOT buttons) picks the bot.
-function parseDifficulty(param: string | null): SoloDifficulty | null {
-  return param === "easy" || param === "hard" ? param : null;
-}
+import { MAX_HP, SOLO_BOT } from "../../lib/gameConfig";
 
 export default function SoloPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="dark flex w-full min-h-dvh items-center justify-center">
-          <div className="loader" />
-        </div>
-      }
-    >
-      <SoloPageInner />
-    </Suspense>
-  );
-}
-
-function SoloPageInner() {
-  const searchParams = useSearchParams();
-  // No ?difficulty= (bare /solo) defaults to the easy bot.
-  const difficulty = parseDifficulty(searchParams.get("difficulty")) ?? "easy";
-
-  return <SoloGame difficulty={difficulty} />;
-}
-
-function SoloGame({ difficulty }: { difficulty: SoloDifficulty }) {
   const router = useRouter();
-  const bot = botConfigFor(difficulty);
-  const { phase, error, view, submit } = useSoloBattle(difficulty);
+  const bot = SOLO_BOT;
+  const { phase, error, view, submit } = useSoloBattle();
 
   if (phase === "loading") {
     return (
@@ -73,9 +41,7 @@ function SoloGame({ difficulty }: { difficulty: SoloDifficulty }) {
         onPlayWord={() => playWordAudio(view.word?.pronounceURL)}
         onExit={() => router.push("/")}
         onViewResult={() =>
-          router.push(
-            `/result?outcome=${view.outcome}&mode=solo&difficulty=${difficulty}`
-          )
+          router.push(`/result?outcome=${view.outcome}&mode=solo`)
         }
       />
     </div>

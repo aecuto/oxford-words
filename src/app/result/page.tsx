@@ -48,10 +48,6 @@ function parseMode(param: string | null): Mode | null {
   return param === "solo" || param === "room" ? param : null;
 }
 
-function parseDifficulty(param: string | null): "easy" | "hard" | null {
-  return param === "easy" || param === "hard" ? param : null;
-}
-
 function Stat({
   label,
   value,
@@ -92,11 +88,8 @@ function ResultPage() {
 
   const outcome = summary?.outcome ?? parseOutcome(searchParams.get("outcome"));
   const mode = summary?.mode ?? parseMode(searchParams.get("mode"));
-  const difficulty =
-    summary?.difficulty ?? parseDifficulty(searchParams.get("difficulty"));
 
-  const playAgain = () =>
-    router.push(difficulty ? `/solo?difficulty=${difficulty}` : "/solo");
+  const playAgain = () => router.push("/solo");
 
   // PvP: reopen the same room for a rematch — no code typing. rematchRoom
   // resets it only if the battle has ended; the host client then auto-starts
@@ -146,7 +139,7 @@ function ResultPage() {
   let modeLine: string | null = null;
   if (mode === "solo") {
     const vs = summary?.opponent ?? "BOT";
-    modeLine = `Solo battle vs ${vs}${difficulty ? ` · ${difficulty.toUpperCase()}` : ""}`;
+    modeLine = `Solo battle vs ${vs}`;
   } else if (mode === "room") {
     modeLine = summary?.opponent
       ? `Online battle vs ${summary.opponent}`
