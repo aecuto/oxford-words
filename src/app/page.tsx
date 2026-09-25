@@ -71,7 +71,7 @@ export default function BattleHub() {
   >(null);
   // Active word list (3000/5000). Read after mount like lastSolo so the
   // hydrated render matches SSR; the list flows into ProgressPanel as a
-  // prop so only the pool totals refresh — progress stats never reload.
+  // prop so the pool total and the per-list seen counts refresh on a switch.
   const [wordList, setWordList] = useState<WordList>("3000");
   const startingRef = useRef(false);
 

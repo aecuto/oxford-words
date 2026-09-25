@@ -10,7 +10,6 @@ import {
   isMastered,
   loadWordStats,
   type DailyProgress,
-  type WordStats,
 } from "../../game/wordProgress";
 import { fetchProgress, type Progress } from "../../game/progressService";
 import { ensureAnonAuth } from "../../lib/firebase";
@@ -46,18 +45,31 @@ function Stat({
 
 export function ProgressPanel({ list }: { list?: WordList }) {
   const [poolTotal, setPoolTotal] = useState(0);
-  const [stats, setStats] = useState<WordStats>({});
+  const [counts, setCounts] = useState({ seen: 0, mastered: 0 });
   const [record, setRecord] = useState<Progress | null>(null);
   const [daily, setDaily] = useState<DailyProgress | null>(null);
 
-  // Pool denominator only: refetches on a word-list switch (both lists stay
-  // memoized, so this is instant after the first look at each).
+  // Per-list counts + pool denominator: the SRS store is one global map keyed
+  // by headword, but the two lists are exclusive, so intersecting its keys
+  // with the selected pool scopes seen/mastered/learning to the active list
+  // (same rule as toListedWords on /words). Refetches on a word-list switch
+  // (both pools stay memoized, so this is instant after the first look).
   useEffect(() => {
     let alive = true;
-    loadWordPool(list)
-      .then((pool) => {
+    Promise.all([loadWordPool(list), Promise.resolve(loadWordStats())])
+      .then(([pool, stats]) => {
         if (!alive) return;
         setPoolTotal(pool.length);
+        let seen = 0;
+        let mastered = 0;
+        for (const w of pool) {
+          const s = stats[w.word];
+          if (s && s.seen > 0) {
+            seen++;
+            if (isMastered(s)) mastered++;
+          }
+        }
+        setCounts({ seen, mastered });
       })
       .catch((e) => console.error("progress:pool", e));
     return () => {
@@ -65,13 +77,9 @@ export function ProgressPanel({ list }: { list?: WordList }) {
     };
   }, [list]);
 
-  // Progress itself never reloads on a list switch — the SRS stats, the
-  // daily goal and the match record are list-independent.
+  // Daily goal and match record stay list-independent.
   useEffect(() => {
     let alive = true;
-    Promise.resolve(loadWordStats()).then((s) => {
-      if (alive) setStats(s);
-    });
     Promise.resolve(currentDailyProgress()).then((d) => {
       if (alive) setDaily(d);
     });
@@ -94,9 +102,8 @@ export function ProgressPanel({ list }: { list?: WordList }) {
     };
   }, []);
 
-  const entries = Object.values(stats);
-  const mastered = entries.filter((s) => isMastered(s)).length;
-  const seen = entries.length;
+  const seen = counts.seen;
+  const mastered = counts.mastered;
   const learning = seen - mastered;
   const showRecord = record != null && record.games > 0;
 
