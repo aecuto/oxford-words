@@ -1,6 +1,13 @@
 import fs from "fs";
 import path from "path";
 import { parse } from "csv-parse/sync";
+import {
+  dedupeByHeadword,
+  normalizeRawWord,
+  type RawWord,
+  type Word,
+  type WordEntry,
+} from "../../../src/game/wordData";
 
 // --- types ---
 interface CsvRow {
@@ -14,30 +21,15 @@ interface CsvRow {
   "e-ant": string;
 }
 
-interface OxWord {
-  word: string;
-  type: string;
-  level: string;
-  ox3000: boolean;
-  ox5000: boolean;
-  pronounceURL: string;
-}
-
-interface WordEntry {
-  type: string;
-  thai: string[];
-}
-
-interface ResultWord extends OxWord {
-  entries: WordEntry[];
+type ResultWord = Word & {
   source: "e-search" | "missing";
-}
+};
 
 // --- paths ---
 const CSV_PATH = path.resolve(__dirname, "etlex-utf8.csv");
-const WORDS_PATH = path.resolve(__dirname, "../scrapper/words.json");
-const OUTPUT_3000_PATH = path.resolve(__dirname, "../../public/words.3000.th.json");
-const OUTPUT_5000_PATH = path.resolve(__dirname, "../../public/words.5000.th.json");
+const WORDS_PATH = path.resolve(__dirname, "../../scrapper/words.json");
+const OUTPUT_3000_PATH = path.resolve(__dirname, "words.3000.th.json");
+const OUTPUT_5000_PATH = path.resolve(__dirname, "words.5000.th.json");
 const MISSING_PATH = path.resolve(__dirname, "missing.txt");
 
 // --- build entries from matched rows ---
@@ -71,7 +63,7 @@ function searchByESearch(word: string, rows: CsvRow[]): CsvRow[] {
 }
 
 // --- build single word entry ---
-function buildWordEntry(base: OxWord, rows: CsvRow[]): ResultWord {
+function buildWordEntry(base: Word, rows: CsvRow[]): ResultWord {
   const matched = searchByESearch(base.word, rows);
   const source: ResultWord["source"] =
     matched.length > 0 ? "e-search" : "missing";
@@ -83,18 +75,10 @@ function buildWordEntry(base: OxWord, rows: CsvRow[]): ResultWord {
   };
 }
 
-// --- dedupe by headword preferring the ox3000 copy ---
-// Mirrors dedupeWords in src/game/wordPool.ts: the scrapper emits one row per
-// part of speech, so the level files are pre-deduped upstream and the runtime
-// dedupe stays a no-op safety net.
-function dedupeResult(words: ResultWord[]): ResultWord[] {
-  const byWord = new Map<string, ResultWord>();
-  for (const w of words) {
-    const prev = byWord.get(w.word);
-    if (!prev || (!prev.ox3000 && w.ox3000)) byWord.set(w.word, w);
-  }
-  return [...byWord.values()];
-}
+// --- dedupe via the shared headword rule ---
+// The scrapper emits one row per part of speech, so the level files are
+// pre-deduped upstream and the runtime dedupe stays a no-op safety net.
+// Shared impl: dedupeByHeadword in src/game/wordData.ts.
 
 // --- main ---
 function main() {
@@ -104,22 +88,12 @@ function main() {
     trim: true,
   });
 
-  // scrapper now emits pronounceURL; older words.json artifacts used
-  // pronounce, so accept either until the next full scrape overwrites them
-  const oxWords: OxWord[] = (
-    JSON.parse(fs.readFileSync(WORDS_PATH, "utf-8")) as {
-      pronounceURL?: string;
-      pronounce?: string;
-      word: string;
-      type: string;
-      level: string;
-      ox3000: boolean;
-      ox5000: boolean;
-    }[]
-  ).map(({ pronounce, pronounceURL, ...rest }) => ({
-    ...rest,
-    pronounceURL: pronounceURL ?? pronounce ?? "-",
-  }));
+  // rows come in via the shared normalizeRawWord (pronounce fallback, list
+  // normalization); this translator ignores definition/examples and strips
+  // them before writing
+  const oxWords: Word[] = (
+    JSON.parse(fs.readFileSync(WORDS_PATH, "utf-8")) as RawWord[]
+  ).map(normalizeRawWord);
 
   const result: ResultWord[] = oxWords.map((base) =>
     buildWordEntry(base, csvRows),
@@ -137,8 +111,15 @@ function main() {
   const answerable = result.filter((w) =>
     w.entries.some((e) => e.thai.length > 0),
   );
-  const deduped = dedupeResult(answerable);
-  const stripSource = ({ source: _source, ...rest }: ResultWord) => rest;
+  const deduped = dedupeByHeadword(answerable);
+  // `source` and the prompt-only definition/examples are build metadata —
+  // the runtime Word shape is word…pronounceURL + entries
+  const stripSource = ({
+    source: _source,
+    definition: _definition,
+    examples: _examples,
+    ...rest
+  }: ResultWord) => rest;
   fs.writeFileSync(
     OUTPUT_3000_PATH,
     JSON.stringify(deduped.filter((w) => w.ox3000).map(stripSource)),

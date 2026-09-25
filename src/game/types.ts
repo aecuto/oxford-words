@@ -1,19 +1,12 @@
 import type { Timestamp } from "firebase/firestore";
+import type { WordEntry } from "./wordData";
 
-export type TEntry = {
-  type: string;
-  thai: string[];
-};
+// The word row shape is defined once in wordData.ts (shared with the
+// translators); re-exported here so runtime imports stay on ./types.
+export type { Word } from "./wordData";
 
-export type Word = {
-  word: string;
-  type: string;
-  level: string;
-  ox3000: boolean;
-  ox5000: boolean;
-  pronounceURL: string;
-  entries: TEntry[];
-};
+// Shared entry shape; this alias keeps the runtime-facing name stable.
+export type TEntry = WordEntry;
 
 export type ResultOutcome = "win" | "lose" | "draw";
 

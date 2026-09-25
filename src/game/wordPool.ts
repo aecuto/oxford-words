@@ -9,13 +9,7 @@ import {
   type WordStat,
   type WordStats,
 } from "./wordProgress";
-
-const typeMap: Record<string, string> = {
-  noun: "N",
-  verb: "V",
-  adjective: "ADJ",
-  adverb: "ADV",
-};
+import { POS_CODES, dedupeByHeadword } from "./wordData";
 
 // The pool is a stable module-level object, so memoizing per word object turns
 // the repeated O(pool) scans in buildAnswers/loadWordPool into cache hits.
@@ -24,7 +18,7 @@ const answerCache = new WeakMap<Word, string>();
 export function getCorrectAnswer(word: Word): string {
   const cached = answerCache.get(word);
   if (cached !== undefined) return cached;
-  const entryType = typeMap[word.type];
+  const entryType = POS_CODES[word.type.toLowerCase()];
   const entries = word.entries ?? [];
 
   const filteredEntries = entryType
@@ -143,15 +137,10 @@ function drawWeighted(
 
 // The source data repeats a headword once per part of speech (e.g. "about" as
 // adverb and as preposition) with identical entries, so an undeduped pool deals
-// the same word twice in one battle. Keep one entry per word, preferring the
-// ox3000-flagged copy.
+// the same word twice in one battle. Shared rule in wordData.ts (the
+// translators dedupe with the same helper upstream).
 export function dedupeWords(words: Word[]): Word[] {
-  const byWord = new Map<string, Word>();
-  for (const w of words) {
-    const prev = byWord.get(w.word);
-    if (!prev || (!prev.ox3000 && w.ox3000)) byWord.set(w.word, w);
-  }
-  return [...byWord.values()];
+  return dedupeByHeadword(words);
 }
 
 // Interleaved draw shared by PvP and PvE (rules at the top of this file).
