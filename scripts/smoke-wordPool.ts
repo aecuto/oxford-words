@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   dedupeWords,
+  getCorrectAnswer,
   loadWordPool,
   mergeWordLists,
   pickBattleWords,
@@ -17,15 +18,20 @@ import type { BattleWord, Word } from "../src/game/types";
 const DAY_MS = 86_400_000;
 const BATTLES = 100;
 
-const raw: Word[] = JSON.parse(
-  fs.readFileSync(path.join(process.cwd(), "public", "words.th.json"), "utf8"),
-);
+const readLevel = (name: string): Word[] =>
+  JSON.parse(
+    fs.readFileSync(path.join(process.cwd(), "public", name), "utf8"),
+  );
 
-// loadWordPool fetches "/words.th.json" in the browser; serve the same file
-// from disk so the real load path (answerable filter, ox3000, dedupe) runs.
-globalThis.fetch = (async () => ({
+const raw3000: Word[] = readLevel("words.3000.th.json");
+const raw5000: Word[] = readLevel("words.5000.th.json");
+
+// loadWordPool fetches "/words.<level>.th.json" in the browser; serve the
+// same files from disk so the real load path (answerable filter, dedupe,
+// 3000→5000 fallback) runs.
+globalThis.fetch = (async (input: RequestInfo | URL) => ({
   ok: true,
-  json: async () => raw,
+  json: async () => (String(input).includes("5000") ? raw5000 : raw3000),
 })) as unknown as typeof fetch;
 
 let failures = 0;
@@ -64,16 +70,57 @@ function assertNoOverlap(prev: BattleWord[], next: BattleWord[], label: string) 
 
 async function main() {
   const pool = await loadWordPool();
+  const pool5000 = await loadWordPool("5000");
   const poolWords = new Set(pool.map((w) => w.word));
 
-  check("source data still contains duplicate headwords (regression fixture)", () => {
-    assert.ok(raw.length > poolWords.size, "raw data deduped upstream; fixture is stale");
-    assert.equal(dedupeWords(raw).length, new Set(raw.map((w) => w.word)).size);
+  check("level files are pre-deduped, answerable, disjoint (fixture)", () => {
+    const words3000 = new Set(raw3000.map((w) => w.word));
+    const words5000 = new Set(raw5000.map((w) => w.word));
+    assert.ok(raw5000.length > 0, "5000 file is empty");
+    for (const w of words3000) {
+      assert.ok(!words5000.has(w), `"${w}" appears in both level files`);
+    }
+    for (const [name, raw] of [
+      ["3000", raw3000],
+      ["5000", raw5000],
+    ] as const) {
+      assert.equal(
+        dedupeWords(raw).length,
+        raw.length,
+        `${name} file has duplicate headwords; translator dedupe broke`,
+      );
+      assert.equal(
+        new Set(raw.map((w) => w.word)).size,
+        raw.length,
+        `${name} file repeats a headword`,
+      );
+      assert.ok(
+        raw.every((w) => getCorrectAnswer(w) !== ""),
+        `${name} file contains unanswerable words`,
+      );
+    }
+    assert.ok(
+      raw3000.every((w) => w.ox3000),
+      "3000 file contains non-ox3000 words",
+    );
+    assert.ok(
+      raw5000.every((w) => !w.ox3000),
+      "5000 file contains ox3000 words",
+    );
   });
 
   check("loadWordPool returns one entry per headword", () => {
     assert.equal(poolWords.size, pool.length);
     assert.ok(pool.length >= WORDS_PER_BATTLE);
+  });
+
+  check("5000 pool loads as a disjoint advanced set", () => {
+    const words5000 = new Set(pool5000.map((w) => w.word));
+    assert.equal(pool5000.length, words5000.size, "5000 pool has duplicates");
+    for (const w of poolWords) {
+      assert.ok(!words5000.has(w), `"${w}" is in both the 3000 and 5000 pools`);
+    }
+    assert.ok(pool5000.length > 0, "5000 pool is empty");
   });
 
   // PvE — useSoloBattle: one player, pickBattleWords(pool, N, stats, prev),

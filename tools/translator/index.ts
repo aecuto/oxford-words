@@ -36,7 +36,8 @@ interface ResultWord extends OxWord {
 // --- paths ---
 const CSV_PATH = path.resolve(__dirname, "etlex-utf8.csv");
 const WORDS_PATH = path.resolve(__dirname, "../scrapper/words.json");
-const OUTPUT_PATH = path.resolve(__dirname, "../../public/words.th.json");
+const OUTPUT_3000_PATH = path.resolve(__dirname, "../../public/words.3000.th.json");
+const OUTPUT_5000_PATH = path.resolve(__dirname, "../../public/words.5000.th.json");
 const MISSING_PATH = path.resolve(__dirname, "missing.txt");
 
 // --- build entries from matched rows ---
@@ -82,6 +83,19 @@ function buildWordEntry(base: OxWord, rows: CsvRow[]): ResultWord {
   };
 }
 
+// --- dedupe by headword preferring the ox3000 copy ---
+// Mirrors dedupeWords in src/game/wordPool.ts: the scrapper emits one row per
+// part of speech, so the level files are pre-deduped upstream and the runtime
+// dedupe stays a no-op safety net.
+function dedupeResult(words: ResultWord[]): ResultWord[] {
+  const byWord = new Map<string, ResultWord>();
+  for (const w of words) {
+    const prev = byWord.get(w.word);
+    if (!prev || (!prev.ox3000 && w.ox3000)) byWord.set(w.word, w);
+  }
+  return [...byWord.values()];
+}
+
 // --- main ---
 function main() {
   const csvRows: CsvRow[] = parse(fs.readFileSync(CSV_PATH, "utf-8"), {
@@ -111,10 +125,30 @@ function main() {
     buildWordEntry(base, csvRows),
   );
 
-  // save words.th.json
-  // minified: pretty-printing cost ~40% on disk with no benefit — the file is
-  // fetched once per session and Vercel already compresses it on the wire
-  fs.writeFileSync(OUTPUT_PATH, JSON.stringify(result), "utf-8");
+  // save level files
+  // Same order as loadWordPool's runtime chain: answerable filter first (at
+  // least one Thai translation, mirroring getCorrectAnswer !== ""), then
+  // dedupe. A word whose only ox3000 row has no translation falls back to its
+  // ox5000 rows exactly like the runtime pool does. Files are disjoint:
+  // words.3000.th.json holds the ox3000 words, words.5000.th.json only the
+  // extra ox5000 words — loadWordPool("5000") fetches and merges both.
+  // `source` is stripped: answerable entries are all "e-search" build
+  // metadata. Minified, like before — Vercel compresses on the wire.
+  const answerable = result.filter((w) =>
+    w.entries.some((e) => e.thai.length > 0),
+  );
+  const deduped = dedupeResult(answerable);
+  const stripSource = ({ source: _source, ...rest }: ResultWord) => rest;
+  fs.writeFileSync(
+    OUTPUT_3000_PATH,
+    JSON.stringify(deduped.filter((w) => w.ox3000).map(stripSource)),
+    "utf-8",
+  );
+  fs.writeFileSync(
+    OUTPUT_5000_PATH,
+    JSON.stringify(deduped.filter((w) => !w.ox3000).map(stripSource)),
+    "utf-8",
+  );
 
   // save missing.txt
   const missing = result
@@ -127,10 +161,15 @@ function main() {
   const count = (source: ResultWord["source"]) =>
     result.filter((r) => r.source === source).length;
 
-  console.log(`Done: ${result.length} words`);
+  const ox3000Count = deduped.filter((w) => w.ox3000).length;
+  console.log(`Done: ${result.length} rows → ${deduped.length} unique words`);
   console.log(`  e-search : ${count("e-search")}`);
   console.log(`  missing  : ${count("missing")}`);
-  console.log(`Output  → words.th.json`);
+  console.log(`  ox3000   : ${ox3000Count} (words.3000.th.json)`);
+  console.log(
+    `  ox5000+  : ${deduped.length - ox3000Count} (words.5000.th.json)`,
+  );
+  console.log(`Output  → words.3000.th.json + words.5000.th.json`);
   console.log(`Missing → missing.txt`);
 }
 

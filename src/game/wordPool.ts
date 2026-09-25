@@ -1,6 +1,7 @@
 import { flatMap, sampleSize, shuffle, uniq } from "lodash";
 import type { Word } from "./types";
-import { ANSWER_OPTIONS, WORDS_PER_BATTLE } from "../lib/gameConfig";
+import { ANSWER_OPTIONS, WORDS_PER_BATTLE, type WordLevel } from "../lib/gameConfig";
+import { loadWordLevel } from "./wordLevel";
 import type { BattleWord } from "./types";
 import {
   isDue,
@@ -264,21 +265,30 @@ export function pickBattleWords(
   return toBattleWords(picked);
 }
 
-// The ~2MB word data lives in public/ and is fetched once per session instead
-// of being imported into the JS bundle, so the battle page ships kilobytes of
-// code instead of megabytes of JSON to download and parse on the main thread.
-let poolPromise: Promise<Word[]> | null = null;
+// The word data lives in public/ as two disjoint per-level files: the
+// translator emits pre-deduped, answerable-only words with words.3000.th.json
+// holding the ox3000 list and words.5000.th.json only the extra ox5000 words.
+// Levels are exclusive — 3000 plays only the core words, 5000 only the
+// advanced ones — so a level load is a single fetch, no merging. Data is
+// fetched once per session instead of being imported into the JS bundle, so
+// the battle page ships kilobytes of code instead of megabytes of JSON to
+// download and parse on the main thread. The default level is the player's
+// persisted pick (localStorage via wordLevel.ts), evaluated per call — so a
+// level switch applies from the next battle on.
+let poolPromises: Partial<Record<WordLevel, Promise<Word[]>>> = {};
 
-export function loadWordPool(): Promise<Word[]> {
-  poolPromise ??= fetch("/words.th.json")
-    .then((res) => {
-      if (!res.ok) throw new Error(`words.th.json: HTTP ${res.status}`);
-      return res.json() as Promise<Word[]>;
-    })
-    .then((all) => {
-      const answerable = dedupeWords(all.filter((w) => getCorrectAnswer(w) !== ""));
-      const ox3000 = answerable.filter((w) => w.ox3000);
-      return ox3000.length >= WORDS_PER_BATTLE ? ox3000 : answerable;
-    });
-  return poolPromise;
+async function fetchLevel(level: WordLevel): Promise<Word[]> {
+  const res = await fetch(`/words.${level}.th.json`);
+  if (!res.ok) throw new Error(`words.${level}.th.json: HTTP ${res.status}`);
+  return res.json() as Promise<Word[]>;
+}
+
+export function loadWordPool(level: WordLevel = loadWordLevel()): Promise<Word[]> {
+  poolPromises[level] ??= fetchLevel(level).then((all) => {
+    // The translator already dedupes and drops unanswerable entries; keep
+    // both runtime filters anyway — dedupeWords must stay applied so
+    // pickBattleWords can never deal the same headword twice.
+    return dedupeWords(all.filter((w) => getCorrectAnswer(w) !== ""));
+  });
+  return poolPromises[level];
 }

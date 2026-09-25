@@ -14,6 +14,7 @@ import {
 } from "../../game/wordProgress";
 import { fetchProgress, type Progress } from "../../game/progressService";
 import { ensureAnonAuth } from "../../lib/firebase";
+import type { WordLevel } from "../../lib/gameConfig";
 
 function pct(part: number, total: number): string {
   if (total <= 0) return "0%";
@@ -43,22 +44,37 @@ function Stat({
   );
 }
 
-export function ProgressPanel() {
+export function ProgressPanel({ level }: { level?: WordLevel }) {
   const [poolTotal, setPoolTotal] = useState(0);
   const [stats, setStats] = useState<WordStats>({});
   const [record, setRecord] = useState<Progress | null>(null);
   const [daily, setDaily] = useState<DailyProgress | null>(null);
 
+  // Pool denominator only: refetches on a word-list switch (both levels stay
+  // memoized, so this is instant after the first look at each).
   useEffect(() => {
     let alive = true;
-    loadWordPool()
+    loadWordPool(level)
       .then((pool) => {
         if (!alive) return;
         setPoolTotal(pool.length);
-        setStats(loadWordStats());
-        setDaily(currentDailyProgress());
       })
       .catch((e) => console.error("progress:pool", e));
+    return () => {
+      alive = false;
+    };
+  }, [level]);
+
+  // Progress itself never reloads on a level switch — the SRS stats, the
+  // daily goal and the match record are level-independent.
+  useEffect(() => {
+    let alive = true;
+    Promise.resolve(loadWordStats()).then((s) => {
+      if (alive) setStats(s);
+    });
+    Promise.resolve(currentDailyProgress()).then((d) => {
+      if (alive) setDaily(d);
+    });
     (async () => {
       try {
         const uid = await ensureAnonAuth();

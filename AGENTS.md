@@ -6,9 +6,9 @@
 - There is no test framework. `pnpm smoke` runs `scripts/smoke-wordPool.ts` (tsx, no services needed): it simulates PvP and PvE battles against the real word data and fails on duplicate words, missing/short option grids, or back-to-back repeats. Run it after touching word picking, the pool, or SRS logic.
 
 ## Word data pipeline
-- `public/words.th.json` is **generated** (~2.3MB, minified single line) and fetched at runtime by `loadWordPool()` in `src/game/wordPool.ts` — never import it into the bundle; the battle page fetches it once per session.
-- Regeneration is two steps: `pnpm fetch-oxford-words` (scrapper: paste the Oxford 3000–5000 `<ul>` HTML into `tools/scrapper/data.txt` → `tools/scrapper/words.json`), then `tsx tools/translator/index.ts` (merges with the Thai lexicon CSV → `public/words.th.json` + `tools/translator/missing.txt`).
-- The raw data lists a headword once per part of speech, so it is full of duplicates. `dedupeWords()` must stay applied in `loadWordPool`/`pickBattleWords` or the same word gets dealt twice in one battle — `pnpm smoke` catches this.
+- `public/words.3000.th.json` and `public/words.5000.th.json` are **generated** (minified single lines) and fetched at runtime by `loadWordPool(level)` in `src/game/wordPool.ts` — never import them into the bundle; the battle page fetches once per session. The files (and levels) are exclusive: 3000 plays only the `ox3000` words, 5000 only the extra `ox5000` words — no merging (the default is the player's persisted pick in `src/game/wordLevel.ts`, selected from the lobby toggle).
+- Regeneration is two steps: `pnpm fetch-oxford-words` (scrapper: paste the Oxford 3000–5000 `<ul>` HTML into `tools/scrapper/data.txt` → `tools/scrapper/words.json`), then `tsx tools/translator/index.ts` (merges with the Thai lexicon CSV → `public/words.3000.th.json` + `public/words.5000.th.json`, pre-deduped and answerable-only, + `tools/translator/missing.txt`).
+- The raw data lists a headword once per part of speech, so it is full of duplicates. The translator dedupes upstream, but `dedupeWords()` must stay applied in `loadWordPool`/`pickBattleWords` anyway or the same word gets dealt twice in one battle — `pnpm smoke` catches this.
 
 ## Word picking (PvP and PvE share one pipeline)
 - Both modes must go through `pickBattleWords` in `src/game/wordPool.ts`; PvP adds only `mergeWordLists` (host+guest interleave) and the `exclude` argument. Do not fork per-mode picking logic.
