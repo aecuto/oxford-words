@@ -112,7 +112,7 @@ export function ProgressPanel() {
 
         <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
           <Link href="/words?filter=mastered" className="block">
-            <Stat label="Known" value={mastered} tone="text-emerald-400" />
+            <Stat label="Mastered" value={mastered} tone="text-emerald-400" />
           </Link>
           <Link href="/words?filter=learning" className="block">
             <Stat label="Study" value={learning} tone="text-blue-400" />

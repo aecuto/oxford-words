@@ -11,7 +11,7 @@ import {
   pickBattleWords,
 } from "../src/game/wordPool";
 import { saveWordResults, type WordResult, type WordStats } from "../src/game/wordProgress";
-import { WORDS_PER_BATTLE } from "../src/lib/gameConfig";
+import { ANSWER_OPTIONS, WORDS_PER_BATTLE } from "../src/lib/gameConfig";
 import type { BattleWord, Word } from "../src/game/types";
 
 const DAY_MS = 86_400_000;
@@ -50,8 +50,8 @@ function assertValidBattle(words: BattleWord[], poolWords: Set<string>) {
   for (const w of words) {
     assert.ok(poolWords.has(w.word), `"${w.word}" is not in the loaded pool`);
     assert.ok(w.correctAnswer.length > 0, `"${w.word}" has no correct answer`);
-    assert.equal(w.options.length, 4, `"${w.word}" has ${w.options.length} options`);
-    assert.equal(new Set(w.options).size, 4, `"${w.word}" has duplicate options`);
+    assert.equal(w.options.length, ANSWER_OPTIONS, `"${w.word}" has ${w.options.length} options`);
+    assert.equal(new Set(w.options).size, ANSWER_OPTIONS, `"${w.word}" has duplicate options`);
     assert.ok(w.options.includes(w.correctAnswer), `"${w.word}" options miss the answer`);
   }
 }
@@ -178,23 +178,25 @@ async function main() {
     );
   });
 
-  check("answers grade into pool marks and review intervals", () => {
+  // The 2-option rule: a correct answer under 2s masters (ivl 14); anything
+  // else — hesitated, guessed, wrong, timeout — is a retry due immediately.
+  check("answers grade into the two pool marks", () => {
     const stats = saveWordResults([
       { word: "grade-instant", correct: true, ms: 1_500 },
       { word: "grade-slow", correct: true, ms: 2_500 },
       { word: "grade-blank", correct: true, ms: 5_500 },
       { word: "grade-timeout", correct: false, ms: 10_000, timeout: true },
-      { word: "grade-false-friend", correct: false, ms: 1_200 },
+      { word: "grade-wrong-fast", correct: false, ms: 1_200 },
     ]);
     assert.equal(stats["grade-instant"].mark, "instant");
     assert.equal(stats["grade-instant"].ivl, 14);
-    assert.equal(stats["grade-slow"].mark, "slow");
-    assert.equal(stats["grade-slow"].ivl, 2);
-    assert.equal(stats["grade-blank"].mark, "blank");
-    assert.equal(stats["grade-blank"].ivl, 1);
-    assert.equal(stats["grade-timeout"].mark, "blank");
-    assert.equal(stats["grade-false-friend"].mark, "falseFriend");
-    assert.equal(stats["grade-false-friend"].ivl, 0);
+    assert.equal(stats["grade-slow"].mark, "retry");
+    assert.equal(stats["grade-slow"].ivl, 0);
+    assert.equal(stats["grade-blank"].mark, "retry");
+    assert.equal(stats["grade-blank"].ivl, 0);
+    assert.equal(stats["grade-timeout"].mark, "retry");
+    assert.equal(stats["grade-wrong-fast"].mark, "retry");
+    assert.equal(stats["grade-wrong-fast"].ivl, 0);
   });
 
   // 1:2 interleaved draw: with plentiful pools every 3-word cycle deals
@@ -203,7 +205,7 @@ async function main() {
     const now = Date.now();
     const stats: WordStats = {};
     pool.slice(0, 300).forEach((w) => {
-      stats[w.word] = { seen: 1, correct: 0, wrong: 1, lastSeenAt: now - 3 * DAY_MS, ivl: 2, mark: "slow" };
+      stats[w.word] = { seen: 1, correct: 0, wrong: 1, lastSeenAt: now - 3 * DAY_MS, ivl: 0, mark: "retry" };
     });
     pool.slice(300, 600).forEach((w) => {
       stats[w.word] = { seen: 1, correct: 1, wrong: 0, lastSeenAt: now - 3 * DAY_MS, ivl: 14, mark: "instant" };
@@ -222,7 +224,7 @@ async function main() {
     const now = Date.now();
     const stats: WordStats = {};
     pool.slice(0, 400).forEach((w) => {
-      stats[w.word] = { seen: 2, correct: 1, wrong: 1, lastSeenAt: now - 3 * DAY_MS, ivl: 2, mark: "slow" };
+      stats[w.word] = { seen: 2, correct: 1, wrong: 1, lastSeenAt: now - 3 * DAY_MS, ivl: 0, mark: "retry" };
     });
     pool.slice(400, 800).forEach((w) => {
       stats[w.word] = { seen: 2, correct: 2, wrong: 0, lastSeenAt: now - 30 * DAY_MS, ivl: 14, mark: "instant" };
@@ -232,7 +234,7 @@ async function main() {
     for (let i = 0; i < 150; i++) {
       for (const w of pickBattleWords(pool, 30, stats)) {
         const mark = stats[w.word]?.mark;
-        if (mark === "slow") fromB++;
+        if (mark === "retry") fromB++;
         else if (mark === "instant") fromC++;
       }
     }
@@ -243,20 +245,21 @@ async function main() {
     );
   });
 
-  // False friends (ivl 0) are due immediately and jump the queue — even when
-  // every other learning word is still inside the 30-min session cooldown.
-  check("false friends return immediately at top priority", () => {
+  // Retry words (ivl 0) are active review: they are due immediately and
+  // bypass the 30-min session cooldown, even when every mastered word is
+  // still inside it.
+  check("retry words return immediately despite the session cooldown", () => {
     const now = Date.now();
     const stats: WordStats = {};
     pool.slice(0, 100).forEach((w) => {
-      stats[w.word] = { seen: 1, correct: 0, wrong: 1, lastSeenAt: now - 5 * 60_000, ivl: 2, mark: "slow" };
+      stats[w.word] = { seen: 1, correct: 1, wrong: 0, lastSeenAt: now - 5 * 60_000, ivl: 14, mark: "instant" };
     });
-    const ff = pool[0];
-    stats[ff.word] = { seen: 1, correct: 0, wrong: 1, lastSeenAt: now - 5 * 60_000, ivl: 0, mark: "falseFriend" };
+    const retry = pool[0];
+    stats[retry.word] = { seen: 1, correct: 0, wrong: 1, lastSeenAt: now - 5 * 60_000, ivl: 0, mark: "retry" };
     const words = pickBattleWords(pool, WORDS_PER_BATTLE, stats);
     assert.ok(
-      words.some((w) => w.word === ff.word),
-      "false friend was not dealt despite being due immediately",
+      words.some((w) => w.word === retry.word),
+      "retry word was not dealt despite being due for active review",
     );
   });
 

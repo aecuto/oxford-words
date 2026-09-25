@@ -1,6 +1,6 @@
 import { flatMap, sampleSize, shuffle, uniq } from "lodash";
 import type { Word } from "./types";
-import { WORDS_PER_BATTLE } from "../lib/gameConfig";
+import { ANSWER_OPTIONS, WORDS_PER_BATTLE } from "../lib/gameConfig";
 import type { BattleWord } from "./types";
 import {
   isDue,
@@ -49,8 +49,8 @@ export function buildAnswers(current: Word, pool: Word[]): string[] {
     if (a && a !== correct) distractors.push(a);
   }
   // uniq before sampling: distractors can repeat the same answer string, and
-  // sampling duplicates would shrink the grid below 4 options.
-  const picked = sampleSize(uniq(distractors), 3);
+  // sampling duplicates would shrink the grid below ANSWER_OPTIONS.
+  const picked = sampleSize(uniq(distractors), ANSWER_OPTIONS - 1);
   return shuffle([correct, ...picked]);
 }
 
@@ -90,35 +90,37 @@ export function mergeWordLists(
 
 // Pick rules — three pools and a 1:2 interleaved draw:
 // 1. Pool A (new): never studied. Pool B (learning): last answer graded
-//    slow/blank/false friend. Pool C (mastered): last answer instant. Words
-//    stay in their pool until re-answered; because B intervals are 0–2 days,
-//    a learning word is always due long before the 14-day learning window
-//    could expire, so the window never gates a review out.
+//    "retry" — hesitated past 2s, guessed, wrong, or timed out. Pool C
+//    (mastered): last answer was instant (<2s). Words stay in their pool
+//    until re-answered; because retry intervals are 0 days, a learning word
+//    is always due long before the 14-day learning window could expire, so
+//    the window never gates a review out.
 // 2. Battles deal a repeating 1 new : 2 old cycle, so reviews always outweigh
 //    fresh words 2:1 — that ratio replaces the old 70% review cap. Empty-pool
 //    fallbacks: Pool A dry → draw everything from B/C; B/C dry → all new.
-// 3. Old slots draw due cards first (nextReviewAt <= now); false friends
-//    (ivl 0, due the moment they are saved) jump the whole due queue. Pool B
-//    weighs double Pool C in every old draw. With nothing due, the slot falls
-//    back to a purely random old word at the same 2x weighting.
-// 4. The 30-min session cooldown holds just-seen words out of due draws so
-//    back-to-back battles never repeat — except false friends, which are
-//    meant to come straight back. The caller's exclude list (the previous
-//    battle's set) still wins, so a false friend returns one battle later
-//    instead of instantly repeating in a fresh deal.
+// 3. Old slots draw due cards from one weighted bag: Pool B counts double
+//    Pool C. Retry words (ivl 0) are always due and skip the 30-min session
+//    cooldown — active review means they can come straight back in the next
+//    battle, even a minute later. With nothing due, the slot falls back to a
+//    purely random old word at the same 2x weighting.
+// 4. The 30-min session cooldown holds only mastered (14-day) reviews out of
+//    draws. The caller's exclude list (the previous battle's set) still wins
+//    over everything, so a retry word returns one battle later instead of
+//    repeating inside a fresh deal.
 // 5. toBattleWords shuffles the dealt set, so the 1:2 cycle never becomes a
 //    memorizable position pattern.
 const DAY_MS = 86_400_000;
 const RECENT_COOLDOWN_MS = 30 * 60_000;
 
-// A word due right now regardless of cooldown: false friends (ivl 0) are
-// scheduled for immediate re-review.
+// A word due right now regardless of cooldown: retry words (ivl 0) are
+// scheduled for immediate re-review — the "active review" half of the
+// 2-option rule.
 function isImmediate(s: WordStat): boolean {
   return s.ivl === 0;
 }
 
 // Old-slot candidate check: due first, with the session cooldown applied to
-// everything except immediate (false-friend) cards.
+// everything except immediate (retry) cards.
 function isReviewable(s: WordStat, now: number, cooldownUntil: number): boolean {
   if (!isDue(s, now)) return false;
   return isImmediate(s) || s.lastSeenAt < cooldownUntil;
@@ -157,8 +159,8 @@ function selectWords(candidates: Word[], count: number, stats: WordStats): Word[
   const cooldownUntil = now - RECENT_COOLDOWN_MS;
 
   const fresh: Word[] = []; // Pool A: never studied
-  const learning: Word[] = []; // Pool B: slow/blank/false friend
-  const mastered: Word[] = []; // Pool C: instant
+  const learning: Word[] = []; // Pool B: retry (hesitated/guessed/wrong/timeout)
+  const mastered: Word[] = []; // Pool C: instant (<2s)
   for (const w of candidates) {
     const s = stats[w.word];
     if (!s || s.seen === 0) fresh.push(w);
@@ -175,13 +177,14 @@ function selectWords(candidates: Word[], count: number, stats: WordStats): Word[
   };
 
   const drawOld = (): Word | undefined => {
-    const immediate: Word[] = [];
     const dueB: Word[] = [];
     const dueC: Word[] = [];
     for (const w of learning) {
       const s = stats[w.word];
       if (!s || taken.has(w.word) || !isReviewable(s, now, cooldownUntil)) continue;
-      (isImmediate(s) ? immediate : dueB).push(w);
+      // Every retry word has ivl 0, so all reviewable Pool B cards are
+      // immediate — there is no separate due queue to jump anymore.
+      dueB.push(w);
     }
     for (const w of mastered) {
       const s = stats[w.word];
@@ -189,9 +192,8 @@ function selectWords(candidates: Word[], count: number, stats: WordStats): Word[
         dueC.push(w);
       }
     }
-    // False friends first, then due B/C at 2:1, then a purely random old word.
+    // Due B/C at 2:1, then a purely random old word as fallback.
     const picked =
-      drawWeighted(immediate, [], taken) ??
       drawWeighted(dueB, dueC, taken) ??
       drawWeighted(learning, mastered, taken);
     if (picked) taken.add(picked.word);
@@ -222,7 +224,10 @@ function toBattleWords(picked: Word[]): BattleWord[] {
       if (other === w.word || !a || a === correct) continue;
       distractors.push(a);
     }
-    const options = shuffle([correct, ...sampleSize(uniq(distractors), 3)]);
+    const options = shuffle([
+      correct,
+      ...sampleSize(uniq(distractors), ANSWER_OPTIONS - 1),
+    ]);
     return {
       word: w.word,
       type: w.type,

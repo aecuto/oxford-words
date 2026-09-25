@@ -6,6 +6,11 @@ export const TURN_GRACE_MS = 1_500;
 export const WORDS_PER_BATTLE = 20;
 export const MAX_WORDS_PER_ROOM = 30;
 
+// The 2-option decision rule on the battle screen: every word shows the
+// correct meaning plus one distractor, so the pick is a clean binary call —
+// instant recall vs hesitate/guess.
+export const ANSWER_OPTIONS = 2;
+
 export const DAILY_GOAL_CORRECT = WORDS_PER_BATTLE;
 
 export const POPUP_LIFETIME_MS = 1_100;
@@ -71,10 +76,10 @@ export const ROOM_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 export const HIGH_MS = 4_000;
 export const MEDIUM_MS = 7_000;
 
-// Answer-speed buckets for the SRS pool transitions (src/game/wordProgress.ts):
-// a correct answer faster than ANSWER_INSTANT_MS masters the word, faster than
-// ANSWER_SLOW_MS keeps it in learning, and anything slower (or a timeout)
-// counts as a blank. Instant sits at 2s because sub-second picks are rare on
-// a 4-option grid — at 1s the Known counter stayed pinned at zero.
+// The 2-option decision rule for the SRS pools (src/game/wordProgress.ts):
+// a correct answer faster than ANSWER_INSTANT_MS masters the word (Pool C);
+// anything slower, a guess, a wrong pick or a timeout grades as "retry" and
+// stays in Pool B for active review. Instant sits at 2s so a deliberate
+// read-and-compare on the 2-option grid still counts as hesitant — at 1s the
+// Mastered counter stayed pinned at zero.
 export const ANSWER_INSTANT_MS = 2_000;
-export const ANSWER_SLOW_MS = 4_000;

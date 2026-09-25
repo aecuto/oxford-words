@@ -29,8 +29,8 @@ export function DailyGoal({
           Today
         </span>
         <span
-          className={`text-xs tabular-nums ${
-            daily?.met ? "text-amber-400" : "text-gray-400"
+          className={`text-xs sm:text-sm font-bold tabular-nums ${
+            daily?.met ? "text-amber-400" : "text-blue-400"
           }`}
         >
           {correct} / {DAILY_GOAL_CORRECT} unique correct
@@ -43,11 +43,11 @@ export function DailyGoal({
         />
       </div>
       <div
-        className={`mt-1.5 flex items-center gap-1 text-xs font-bold ${
+        className={`mt-2 flex items-center gap-1.5 text-sm sm:text-base font-bold ${
           streak > 0 ? "text-amber-400" : "text-gray-500"
         }`}
       >
-        <FireIcon className="h-3.5 w-3.5" />
+        <FireIcon className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]" />
         {streak}-day streak
       </div>
     </div>

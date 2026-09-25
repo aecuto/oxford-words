@@ -52,13 +52,30 @@ function toListedWords(pool: Word[], stats: WordStats): ListedWord[] {
     .sort((a, b) => a.word.localeCompare(b.word));
 }
 
-function WordRow({ item, mastered }: { item: ListedWord; mastered: boolean }) {
+const DAY_MS = 86_400_000;
+
+function WordRow({
+  item,
+  mastered,
+  now,
+}: {
+  item: ListedWord;
+  mastered: boolean;
+  now: number;
+}) {
   const badge = TYPE_BADGE[item.type.toLowerCase()];
+  // Retry words (ivl 0) are always due — that is the "active review" half of
+  // the 2-option rule. Mastered words count down to their 14-day review.
+  const dueAt = item.stat.lastSeenAt + (item.stat.ivl ?? 0) * DAY_MS;
+  const daysLeft = Math.ceil((dueAt - now) / DAY_MS);
+  const dueNow = daysLeft <= 0;
   return (
     <li className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-gray-800/60">
       <span
         className={`shrink-0 h-2 w-2 rounded-full ${
-          mastered ? "bg-emerald-500" : "bg-blue-500"
+          mastered
+            ? "bg-emerald-500"
+            : "bg-blue-500 animate-pulse"
         }`}
         aria-hidden
       />
@@ -83,6 +100,17 @@ function WordRow({ item, mastered }: { item: ListedWord; mastered: boolean }) {
           </span>
         </span>
         <span className="block text-xs text-gray-400 truncate">{item.thai}</span>
+      </span>
+      <span
+        className={`shrink-0 text-[10px] font-bold uppercase tracking-wide tabular-nums ${
+          dueNow
+            ? mastered
+              ? "text-emerald-400"
+              : "text-blue-400"
+            : "text-gray-500"
+        }`}
+      >
+        {dueNow ? "due now" : `in ${daysLeft}d`}
       </span>
       <button
         onClick={() => playWordAudio(item.pronounce)}
@@ -121,12 +149,17 @@ function WordsPageInner() {
     parseFilter(searchParams.get("filter")),
   );
   const [words, setWords] = useState<ListedWord[] | null>(null);
+  // Clock captured once at load time; due countdowns don't need to tick live.
+  const [loadedAt, setLoadedAt] = useState(0);
 
   useEffect(() => {
     let alive = true;
     Promise.all([loadWordPool(), Promise.resolve(loadWordStats())])
       .then(([pool, stats]) => {
-        if (alive) setWords(toListedWords(pool, stats));
+        if (alive) {
+          setWords(toListedWords(pool, stats));
+          setLoadedAt(Date.now());
+        }
       })
       .catch((e) => console.error("words:load", e));
     return () => {
@@ -142,9 +175,18 @@ function WordsPageInner() {
     };
   }, [words]);
 
-  const visible = (words ?? []).filter((w) =>
-    filter === "mastered" ? isMastered(w.stat) : !isMastered(w.stat),
-  );
+  const visible = useMemo(() => {
+    const list = (words ?? []).filter((w) =>
+      filter === "mastered" ? isMastered(w.stat) : !isMastered(w.stat),
+    );
+    // Study tab is the active-review queue: stalest first is the order the
+    // picker will deal them. Mastered stays alphabetical.
+    return list.sort((a, b) =>
+      filter === "mastered"
+        ? a.word.localeCompare(b.word)
+        : a.stat.lastSeenAt - b.stat.lastSeenAt,
+    );
+  }, [words, filter]);
 
   return (
     <div className="dark min-h-dvh pt-safe pb-safe">
@@ -161,7 +203,7 @@ function WordsPageInner() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 mb-4">
+        <div className="grid grid-cols-2 gap-2 mb-2">
           <button
             onClick={() => setFilter("learning")}
             className={`px-4 py-2.5 rounded-lg border-2 font-black uppercase tracking-wide text-sm transition-colors ${
@@ -183,12 +225,16 @@ function WordsPageInner() {
                 : "border-gray-700 bg-gray-800/60 text-gray-400 hover:border-gray-600"
             }`}
           >
-            Known
+            Mastered
             <span className="ml-2 tabular-nums">
               {words === null ? "…" : counts.mastered}
             </span>
           </button>
         </div>
+        <p className="text-[11px] text-gray-500 mb-4">
+          Answer correctly in under 2 seconds → Mastered. Hesitate, guess or
+          miss → back to Study.
+        </p>
 
         <Card>
           <CardBody className="p-2 sm:p-3">
@@ -199,7 +245,7 @@ function WordsPageInner() {
             ) : visible.length === 0 ? (
               <p className="text-sm text-gray-500 text-center py-10 px-4">
                 {filter === "mastered"
-                  ? "No known words yet — answer a word in under two seconds to master it."
+                  ? "No mastered words yet — answer a word in under two seconds to master it."
                   : "Nothing to study yet — play a battle to start collecting words."}
               </p>
             ) : (
@@ -209,6 +255,7 @@ function WordsPageInner() {
                     key={item.word}
                     item={item}
                     mastered={isMastered(item.stat)}
+                    now={loadedAt}
                   />
                 ))}
               </ul>

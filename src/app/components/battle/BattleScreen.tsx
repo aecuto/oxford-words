@@ -100,6 +100,7 @@ export function BattleScreen({
           total={view.wordTotal}
           current={view.wordNumber - 1}
           results={view.wordResults}
+          marks={view.wordMarks}
         />
       </div>
 
@@ -169,7 +170,9 @@ export function BattleScreen({
                 )}
               >
                 Answer:
-                <span className="font-bold">{view.word.correctAnswer}</span>
+                <span className="font-bold text-sm sm:text-base leading-relaxed">
+                  {view.word.correctAnswer}
+                </span>
               </span>
             )}
           </>

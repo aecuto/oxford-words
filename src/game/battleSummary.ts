@@ -6,6 +6,8 @@ export type BattleWordDetail = {
   /** correct answer (Thai translation) */
   answer?: string;
   correct: boolean;
+  /** graded instant (<2s) → mastered; absent when timing is unavailable (PvP) */
+  instant?: boolean;
   /** HP you dealt to the opponent on this word */
   dealt: number;
   /** HP you lost on this word (miss penalty or opponent hits) */

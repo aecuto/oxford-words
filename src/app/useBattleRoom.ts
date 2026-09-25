@@ -54,6 +54,8 @@ export type BattleView = {
   wordNumber: number;
   wordTotal: number;
   wordResults?: (boolean | null)[];
+  /** Per-word instant grade for the pips; solo only — PvP has no response times. */
+  wordMarks?: (boolean | null)[];
   selected: string | null;
   answerState: AnswerState;
   waitingOpp: boolean;
@@ -405,8 +407,9 @@ export function useBattleRoom(code: string) {
         correct,
         at: Date.now(),
       };
-      // Response time + timeout flag drive the SRS pool transition
-      // (instant/slow/blank/false friend) in wordProgress.
+      // Response time + timeout flag drive the 2-option SRS grade in
+      // wordProgress: instant (<2s) masters the word, everything else is a
+      // retry that keeps it in Pool B for active review.
       resultsRef.current.push({
         word: current.word,
         correct,

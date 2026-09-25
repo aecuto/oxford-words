@@ -5,6 +5,7 @@ import { computeHit, clampElapsed } from "../game/damage";
 import { loadWordPool, pickBattleWords } from "../game/wordPool";
 import { recordResult } from "../game/progressService";
 import {
+  gradeAnswer,
   loadWordStats,
   saveWordResults,
   type WordResult,
@@ -37,6 +38,9 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
   const [error, setError] = useState<string | null>(null);
   const [wordIndex, setWordIndex] = useState(0);
   const [wordResults, setWordResults] = useState<(boolean | null)[]>([]);
+  // Per-word 2-option grade (true = instant/mastered, false = retry) for the
+  // progress pips; solo battles know the response time, PvP does not.
+  const [wordMarks, setWordMarks] = useState<(boolean | null)[]>([]);
   const [botHp, setBotHp] = useState<number>(bot.hp);
   const [myHp, setMyHp] = useState(MAX_HP);
   const [botStreak, setBotStreak] = useState(0);
@@ -156,6 +160,7 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
         wordDetailsRef.current = [];
         setWords(picked);
       setWordResults(new Array(picked.length).fill(null));
+      setWordMarks(new Array(picked.length).fill(null));
       setStartedAt(Date.now());
       scheduleBotTurn(0);
     }
@@ -177,6 +182,7 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
         wordsRef.current = picked;
         setWords(picked);
         setWordResults(new Array(picked.length).fill(null));
+        setWordMarks(new Array(picked.length).fill(null));
         setStartedAt(Date.now());
         scheduleBotTurn(0);
       } catch (e) {
@@ -203,10 +209,15 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
       const isLast = wordIndex + 1 >= words.length;
       const beforeMy = myHpRef.current;
       const beforeBot = botHpRef.current;
+      // Response time + timeout flag drive the 2-option SRS grade in
+      // wordProgress: instant (<2s) masters the word, everything else is a
+      // retry that keeps it in Pool B for active review.
+      const instant = current
+        ? gradeAnswer(result === "correct", ms, result === "timeout") ===
+          "instant"
+        : false;
 
       if (current) {
-        // Response time + timeout flag drive the SRS pool transition
-        // (instant/slow/blank/false friend) in wordProgress.
         resultsRef.current.push({
           word: current.word,
           correct: result === "correct",
@@ -216,6 +227,11 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
         setWordResults((prev) => {
           const next = [...prev];
           next[wordIndex] = result === "correct";
+          return next;
+        });
+        setWordMarks((prev) => {
+          const next = [...prev];
+          next[wordIndex] = instant;
           return next;
         });
       }
@@ -246,6 +262,7 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
           pronounce: current.pronounce,
           answer: current.correctAnswer,
           correct: result === "correct",
+          instant,
           dealt: beforeBot - botHpRef.current,
           taken: beforeMy - myHpRef.current,
         });
@@ -368,6 +385,7 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
       wordNumber: wordIndex + 1,
       wordTotal: words.length,
       wordResults,
+      wordMarks,
       selected,
       answerState,
       waitingOpp: false,
@@ -379,6 +397,7 @@ export function useSoloBattle(difficulty: SoloDifficulty = "easy") {
     words,
     wordIndex,
     wordResults,
+    wordMarks,
     myHp,
     botHp,
     streak,

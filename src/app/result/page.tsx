@@ -139,6 +139,9 @@ function ResultPage() {
     summary && summary.answered > 0
       ? Math.round((summary.correct / summary.answered) * 100)
       : null;
+  // Solo summaries carry the 2-option grade; PvP ones predate it.
+  const timed = (summary?.words ?? []).some((w) => w.instant !== undefined);
+  const instantCount = (summary?.words ?? []).filter((w) => w.instant).length;
 
   let modeLine: string | null = null;
   if (mode === "solo") {
@@ -170,12 +173,23 @@ function ResultPage() {
         )}
 
         {summary && summary.answered > 0 && (
-          <div className="grid grid-cols-3 gap-2 w-full max-w-xs mt-8">
+          <div
+            className={`grid gap-2 w-full max-w-xs mt-8 ${
+              timed ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"
+            }`}
+          >
             <Stat
               label="Correct"
               value={`${summary.correct}/${summary.answered}`}
               tone="text-emerald-400"
             />
+            {timed && (
+              <Stat
+                label="Instant"
+                value={instantCount}
+                tone="text-amber-400"
+              />
+            )}
             <Stat
               label="Accuracy"
               value={`${accuracy}%`}
@@ -184,7 +198,7 @@ function ResultPage() {
             <Stat
               label="Best streak"
               value={summary.bestStreak}
-              tone="text-amber-400"
+              tone="text-violet-400"
             />
           </div>
         )}

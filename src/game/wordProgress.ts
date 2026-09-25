@@ -1,13 +1,16 @@
 import {
   ANSWER_INSTANT_MS,
-  ANSWER_SLOW_MS,
   DAILY_GOAL_CORRECT,
 } from "../lib/gameConfig";
 
-// Last answer's grade; decides pool membership in the picker (Pool B/C) and
-// the next review interval. Absent on records saved before timing was
-// tracked — those fall back to correct > wrong for mastery.
-export type AnswerMark = "instant" | "slow" | "blank" | "falseFriend";
+// The 2-option decision rule — exactly one of two grades per answer:
+// "instant" (correct pick in under ANSWER_INSTANT_MS) masters the word into
+// Pool C; everything else — hesitated, guessed, wrong, or timed out — is
+// "retry" and stays in Pool B for active review. Records saved before this
+// rule carry the old marks ("slow"/"blank"/"falseFriend"); they simply fail
+// the === "instant" check in isMastered, so they read as learning until the
+// word is answered again.
+export type AnswerMark = "instant" | "retry";
 
 export type WordStat = {
   seen: number;
@@ -24,7 +27,7 @@ export type WordResult = {
   word: string;
   correct: boolean;
   // Response time in ms and whether the turn expired unanswered; both feed
-  // markFor. Legacy callers may omit them (graded conservatively as blank).
+  // gradeAnswer. Legacy callers may omit them (graded conservatively as retry).
   ms?: number;
   timeout?: boolean;
 };
@@ -55,37 +58,35 @@ export function isDue(stat: WordStat | undefined, now: number): boolean {
   return now >= stat.lastSeenAt + (stat.ivl ?? 0) * DAY_MS;
 }
 
-// Mastered (Pool C) = the last answer was instant. Legacy records without a
-// mark keep the old rule (more correct than wrong) so existing data still
-// reads sensibly until each word is answered again. Shared by the lobby
-// progress panel and the /words page so both agree with the picker's pools.
+// Mastered (Pool C) = the last answer was graded instant (<2s). Legacy
+// records without a mark keep the old rule (more correct than wrong) so
+// existing data still reads sensibly until each word is answered again.
+// Shared by the lobby progress panel and the /words page so both agree with
+// the picker's pools.
 export function isMastered(stat: WordStat | undefined): boolean {
   if (!stat) return false;
   return stat.mark ? stat.mark === "instant" : stat.correct > stat.wrong;
 }
 
-// Pool transition + interval table (days) per answer grade. ivl 0 keeps a
-// false friend due immediately, so the very next battle deals it first.
+// Pool transition + next-review interval (days) per grade. ivl 0 keeps a
+// retry word due immediately, so the picker deals it again in the very next
+// battle — that is what "active review" means for Pool B.
 const MARK_IVL_DAYS: Record<AnswerMark, number> = {
   instant: 14,
-  slow: 2,
-  blank: 1,
-  falseFriend: 0,
+  retry: 0,
 };
 
-// Grade an answer from its response time. A wrong pick is a false friend no
-// matter how fast; a timeout is a blank (the answer never came). Correct
-// answers without timing (legacy callers) grade conservatively as blank.
-function markFor(
+// Grade an answer with the 2-option rule. A wrong pick or a timeout is a
+// retry no matter how fast; a correct pick masters the word only when it
+// beats ANSWER_INSTANT_MS. Correct answers without timing (legacy callers)
+// grade conservatively as retry.
+export function gradeAnswer(
   correct: boolean,
   ms: number | undefined,
   timeout: boolean | undefined,
 ): AnswerMark {
-  if (timeout) return "blank";
-  if (!correct) return "falseFriend";
-  if (ms != null && ms < ANSWER_INSTANT_MS) return "instant";
-  if (ms != null && ms < ANSWER_SLOW_MS) return "slow";
-  return "blank";
+  if (timeout || !correct) return "retry";
+  return ms != null && ms < ANSWER_INSTANT_MS ? "instant" : "retry";
 }
 
 function dayKey(ms: number): string {
@@ -158,7 +159,7 @@ export function saveWordResults(results: WordResult[]): WordStats {
       lastSeenAt: 0,
       ivl: 0,
     };
-    const mark = markFor(r.correct, r.ms, r.timeout);
+    const mark = gradeAnswer(r.correct, r.ms, r.timeout);
     stats[r.word] = {
       seen: prev.seen + 1,
       correct: prev.correct + (r.correct ? 1 : 0),

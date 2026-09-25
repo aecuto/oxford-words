@@ -22,7 +22,7 @@ export function AnswerGrid({
   onSelect,
 }: AnswerGridProps) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 auto-rows-fr gap-2 sm:gap-3 select-none touch-manipulation">
+    <div className="grid grid-cols-1 sm:grid-cols-2 auto-rows-fr gap-2 sm:gap-3 select-none touch-manipulation">
       {word.options.map((option, idx) => {
         const isSelected = selected === option;
         const isCorrect = isSelected && answerState === "correct";
@@ -51,17 +51,19 @@ export function AnswerGrid({
                 "border-yellow-400 bg-yellow-50 dark:bg-yellow-900/40 shadow-[0_0_10px_rgba(250,204,21,0.4)]",
             )}
           >
-            <CardBody className="p-2.5 sm:p-3 min-h-[3.25rem] h-full flex items-center">
-              <ul className="space-y-0.5 list-disc list-inside w-full flex flex-col justify-center">
+            <CardBody className="p-3 sm:p-4 min-h-[3.75rem] h-full flex items-center">
+              {/* Thai needs a bigger size and loose leading: vowel and tone
+                  marks stack above/below the glyphs and clip when tight. */}
+              <div className="w-full flex flex-col justify-center gap-1">
                 {option.split(", ").map((text, i) => (
-                  <li
+                  <span
                     key={i}
-                    className="text-[13px] sm:text-sm leading-snug text-left"
+                    className="text-base sm:text-lg leading-relaxed text-left"
                   >
                     {text}
-                  </li>
+                  </span>
                 ))}
-              </ul>
+              </div>
             </CardBody>
           </Card>
         );
