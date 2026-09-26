@@ -7,7 +7,6 @@ import {
   endGame,
   getRoom,
   joinRoom,
-  renamePlayer,
   startGame,
   subscribeRoom,
   submitAnswer,
@@ -73,7 +72,7 @@ export type BattleView = {
 // (view, phase, isHost) plus its own damage popups, the snapshot guards and
 // the summary/SRS buffers. The imperative resources (subscription handle,
 // in-flight op dedupe, settle timer) are module state. Everything per-battle
-// is reset by bind() when a room page mounts, matching the per-mount
+// is reset by connect() when a room page mounts, matching the per-mount
 // lifetime the old refs had. Lives in src/app/ — src/game/ stays
 // framework-free.
 type RoomWordDetail = {
@@ -249,32 +248,19 @@ const stopWatching = () => {
   unsub = null;
 };
 
+// Only the page-facing surface: connect/disconnect lifecycle, the join
+// flow, host settle paths and the answer entry points. Everything else
+// (snapshot diffing, op dedupe, submit guards, summary buffers) stays
+// store-internal and never reaches React.
 type RoomBattleActions = {
-  bind: (code: string) => void;
   connect: (code: string) => Promise<void>;
   disconnect: () => void;
-  watch: (myUid: string) => void;
-  applySnapshot: (myUid: string, r: ClientRoom | null) => void;
-  setUid: (uid: string) => void;
-  setError: (error: string) => void;
-  setNeedsJoin: (needsJoin: boolean) => void;
-  setJoining: (joining: boolean) => void;
   join: (joinName: string) => Promise<void>;
-  rename: (newName: string) => void;
-  /** Dedupes concurrent network ops by key (host settle, rename, ...). */
-  act: (key: string, fn: () => Promise<unknown>) => void;
   maybeAutoStart: () => void;
   settleTurn: () => void;
   deadlineTick: () => void;
-  /** Returns false when this word was already submitted. */
-  claimSubmit: (wordIndex: number) => boolean;
-  releaseSubmit: () => void;
-  noteBestStreak: (streak: number) => void;
-  pushAnswered: (result: WordResult, detail: RoomWordDetail) => void;
-  markRecorded: (code: string) => void;
   submitPlayer: (answer: string | null) => Promise<void>;
   recordOutcome: () => void;
-  drainResults: () => WordResult[];
 };
 
 export const useRoomBattleStore = create<
@@ -317,39 +303,189 @@ export const useRoomBattleStore = create<
     }, POPUP_LIFETIME_MS);
   };
 
+  /** Dedupes concurrent network ops by key (host settle, timeout, ...). */
+  const act = (key: string, fn: () => Promise<unknown>) => {
+    if (acting.has(key)) return;
+    acting.add(key);
+    fn()
+      .catch((e) => console.error(`battle:${key}`, e))
+      .finally(() => {
+        acting.delete(key);
+      });
+  };
+
+  const applySnapshot = (myUid: string, r: ClientRoom | null) => {
+    const state = get();
+    // A snapshot from a previous subscription can outlive its cleanup —
+    // only accept snapshots for the bound room.
+    if (!state.code || (r != null && r.code !== state.code)) return;
+    if (!r) {
+      commit({ room: null, hpLens: null });
+      return;
+    }
+    const key = slotOf(r, myUid);
+    if (!key) {
+      commit({ room: r, hpLens: null });
+      return;
+    }
+
+    // Diff hit counts against the previous snapshot; only new hits spawn
+    // popups, and only when they landed on the current word.
+    const oppKey: SlotKey = key === "p1" ? "p2" : "p1";
+    const myHits = r.players[key]?.hits ?? [];
+    const oppHits = r.players[oppKey]?.hits ?? [];
+    const lens = { me: oppHits.length, opp: myHits.length };
+    const prev = state.hpLens;
+    if (prev) {
+      if (lens.opp > prev.opp) {
+        const hit = myHits[lens.opp - 1];
+        if (hit && hit.wordIndex === r.wordIndex) {
+          spawnPopup("opp", hit.damage, hit.crit);
+        }
+      }
+      if (lens.me > prev.me) {
+        const hit = oppHits[lens.me - 1];
+        if (hit && hit.wordIndex === r.wordIndex) {
+          spawnPopup("me", hit.damage, hit.crit);
+        }
+      }
+    }
+
+    commit({
+      room: r,
+      hpLens: lens,
+      liveSeen: r.status === "playing" ? true : state.liveSeen,
+    });
+  };
+
+  const watch = (myUid: string) => {
+    stopWatching();
+    const code = get().code;
+    if (!code) return;
+    unsub = subscribeRoom(code, (r) => applySnapshot(myUid, r));
+  };
+
+  /** Returns false when this word was already submitted. */
+  const claimSubmit = (wordIndex: number): boolean => {
+    if (get().submittedWord === wordIndex) return false;
+    set({ submittedWord: wordIndex });
+    return true;
+  };
+
+  const releaseSubmit = () => set({ submittedWord: -1 });
+
+  const noteBestStreak = (streak: number) => {
+    if (streak > get().bestStreak) set({ bestStreak: streak });
+  };
+
+  const pushAnswered = (result: WordResult, detail: RoomWordDetail) =>
+    set((state) => ({
+      results: [...state.results, result],
+      wordDetails: [...state.wordDetails, detail],
+    }));
+
+  const submitPlayer = async (answer: string | null) => {
+    const st = get();
+    const r = st.room;
+    const myUid = st.uid;
+    if (!r || r.status !== "playing" || !myUid) return;
+    const key = slotOf(r, myUid);
+    if (!key) return;
+    const my = r.players[key];
+    if (!my || my.lastAnswer?.wordIndex === r.wordIndex) return;
+    if (!claimSubmit(r.wordIndex)) return;
+
+    const current = r.words[r.wordIndex];
+    if (!current) return;
+
+    const elapsed = clampElapsed(
+      r.turnStartedAt == null ? TURN_MS : Date.now() - r.turnStartedAt
+    );
+    const timeout = answer == null;
+    const correct = !timeout && answer === current.correctAnswer;
+    const streak = correct ? my.streak + 1 : 0;
+    noteBestStreak(streak);
+
+    let hit: Hit | null = null;
+    let oppHit: Hit | null = null;
+    if (correct) {
+      const res = computeHit(elapsed, my.streak);
+      if (res) {
+        hit = {
+          wordIndex: r.wordIndex,
+          damage: res.damage,
+          crit: res.crit,
+          at: Date.now(),
+        };
+      }
+    } else {
+      oppHit = penaltyHit(r.wordIndex);
+    }
+
+    const lastAnswer: LastAnswer = {
+      wordIndex: r.wordIndex,
+      answer: answer ?? "",
+      correct,
+      at: Date.now(),
+    };
+    // Response time + timeout flag drive the 2-option SRS grade in
+    // wordProgress: instant (<2s) masters the word, everything else is a
+    // retry that keeps it in Pool B for active review.
+    pushAnswered(
+      {
+        word: current.word,
+        correct,
+        ms: elapsed,
+        timeout: answer == null,
+      },
+      {
+        wordIndex: r.wordIndex,
+        word: current.word,
+        type: current.type,
+        correct,
+      }
+    );
+
+    await submitAnswer(r.code, key, lastAnswer, hit, streak, oppHit).catch(
+      (e) => {
+        console.error("battle:submit", e);
+        // Let the click or the deadline retry this word.
+        releaseSubmit();
+      }
+    );
+  };
+
   return {
     ...freshRoomBattle(null),
 
-    bind: (code) => set(freshRoomBattle(code)),
-
     connect: async (code) => {
-      get().bind(code);
+      set(freshRoomBattle(code));
       try {
         const myUid = await ensureAnonAuth();
         // Currency checks replace the old `alive` flag: a slow auth that
         // resolves after a navigation must not touch the new room's state.
         if (get().code !== code) return;
-        get().setUid(myUid);
+        commit({ uid: myUid });
 
         const existing = await getRoom(code);
         if (get().code !== code) return;
         if (!existing) {
-          get().setError("Room not found or already closed. Join from the lobby list or ask for a new invite link.");
+          commit({ error: "Room not found or already closed. Join from the lobby list or ask for a new invite link." });
           return;
         }
         if (slotOf(existing, myUid)) {
-          get().watch(myUid);
+          watch(myUid);
           return;
         }
         if (existing.players.p2 !== null || existing.status !== "waiting") {
-          get().setError("This room is full.");
+          commit({ error: "This room is full." });
           return;
         }
-        get().setNeedsJoin(true);
+        commit({ needsJoin: true });
       } catch (e) {
         console.error(e);
         if (get().code === code) {
-          get().setError(describeAuthError(e));
+          commit({ error: describeAuthError(e) });
         }
       }
     },
@@ -362,70 +498,12 @@ export const useRoomBattleStore = create<
       }
     },
 
-    watch: (myUid) => {
-      stopWatching();
-      const code = get().code;
-      if (!code) return;
-      unsub = subscribeRoom(code, (r) =>
-        useRoomBattleStore.getState().applySnapshot(myUid, r)
-      );
-    },
-
-    applySnapshot: (myUid, r) => {
-      const state = get();
-      // A snapshot from a previous subscription can outlive its cleanup —
-      // only accept snapshots for the bound room.
-      if (!state.code || (r != null && r.code !== state.code)) return;
-      if (!r) {
-        commit({ room: null, hpLens: null });
-        return;
-      }
-      const key = slotOf(r, myUid);
-      if (!key) {
-        commit({ room: r, hpLens: null });
-        return;
-      }
-
-      // Diff hit counts against the previous snapshot; only new hits spawn
-      // popups, and only when they landed on the current word.
-      const oppKey: SlotKey = key === "p1" ? "p2" : "p1";
-      const myHits = r.players[key]?.hits ?? [];
-      const oppHits = r.players[oppKey]?.hits ?? [];
-      const lens = { me: oppHits.length, opp: myHits.length };
-      const prev = state.hpLens;
-      if (prev) {
-        if (lens.opp > prev.opp) {
-          const hit = myHits[lens.opp - 1];
-          if (hit && hit.wordIndex === r.wordIndex) {
-            spawnPopup("opp", hit.damage, hit.crit);
-          }
-        }
-        if (lens.me > prev.me) {
-          const hit = oppHits[lens.me - 1];
-          if (hit && hit.wordIndex === r.wordIndex) {
-            spawnPopup("me", hit.damage, hit.crit);
-          }
-        }
-      }
-
-      commit({
-        room: r,
-        hpLens: lens,
-        liveSeen: r.status === "playing" ? true : state.liveSeen,
-      });
-    },
-
-    setUid: (uid) => commit({ uid }),
-    setError: (error) => commit({ error }),
-    setNeedsJoin: (needsJoin) => commit({ needsJoin }),
-    setJoining: (joining) => commit({ joining }),
-
     join: async (joinName) => {
       const st = get();
       const code = st.code;
       const myUid = st.uid;
       if (!code || !myUid || st.joining) return;
-      st.setJoining(true);
+      commit({ joining: true });
       try {
         const pool = await loadWordPool();
         // Words published on the room doc (the host's pick for the pending
@@ -443,34 +521,14 @@ export const useRoomBattleStore = create<
           excluded
         );
         await joinRoom(code, myUid, joinName.trim() || DEFAULT_PLAYER_NAMES.p2, myWords);
-        get().watch(myUid);
-        get().setNeedsJoin(false);
+        watch(myUid);
+        commit({ needsJoin: false });
       } catch (e) {
         console.error("battle:join", e);
-        get().setError(describeAuthError(e));
+        commit({ error: describeAuthError(e) });
       } finally {
-        get().setJoining(false);
+        commit({ joining: false });
       }
-    },
-
-    rename: (newName) => {
-      const st = get();
-      const r = st.room;
-      const myUid = st.uid;
-      if (!r || !myUid) return;
-      const key = slotOf(r, myUid);
-      if (!key) return;
-      get().act("rename", () => renamePlayer(r.code, key, newName));
-    },
-
-    act: (key, fn) => {
-      if (acting.has(key)) return;
-      acting.add(key);
-      fn()
-        .catch((e) => console.error(`battle:${key}`, e))
-        .finally(() => {
-          acting.delete(key);
-        });
     },
 
     // First game only: rematches start from the rematchRoom transaction once
@@ -481,7 +539,7 @@ export const useRoomBattleStore = create<
       if (!r || !st.uid || st.uid !== r.hostUid) return;
       if (r.rematchReady?.p1 || r.rematchReady?.p2) return;
       if (r.status === "waiting" && r.players.p2 != null) {
-        get().act("start", async () => {
+        act("start", async () => {
           const merged = mergeWordLists(
             r.words,
             r.players.p2?.words ?? [],
@@ -527,9 +585,9 @@ export const useRoomBattleStore = create<
                 : hp2 <= 0
                   ? "p1"
                   : byHp(hp1, hp2);
-          get().act(`end-${current}`, () => endGame(r.code, winner));
+          act(`end-${current}`, () => endGame(r.code, winner));
         } else {
-          get().act(`adv-${current}`, () => advanceWord(r.code, current + 1));
+          act(`adv-${current}`, () => advanceWord(r.code, current + 1));
         }
       }, settleMs);
     },
@@ -543,10 +601,10 @@ export const useRoomBattleStore = create<
       if (!key) return;
       const my = cur.players[key];
       if (!my || my.lastAnswer?.wordIndex === cur.wordIndex) return;
-      if (!st.claimSubmit(cur.wordIndex)) return;
+      if (!claimSubmit(cur.wordIndex)) return;
       const timedOutWord = cur.words[cur.wordIndex];
       if (timedOutWord) {
-        st.pushAnswered(
+        pushAnswered(
           {
             word: timedOutWord.word,
             correct: false,
@@ -561,7 +619,7 @@ export const useRoomBattleStore = create<
           }
         );
       }
-      get().act(`timeout-${cur.wordIndex}`, () =>
+      act(`timeout-${cur.wordIndex}`, () =>
         submitAnswer(
           cur.code,
           key,
@@ -578,96 +636,7 @@ export const useRoomBattleStore = create<
       );
     },
 
-    claimSubmit: (wordIndex) => {
-      if (get().submittedWord === wordIndex) return false;
-      set({ submittedWord: wordIndex });
-      return true;
-    },
-
-    releaseSubmit: () => set({ submittedWord: -1 }),
-
-    noteBestStreak: (streak) => {
-      if (streak > get().bestStreak) set({ bestStreak: streak });
-    },
-
-    pushAnswered: (result, detail) =>
-      set((state) => ({
-        results: [...state.results, result],
-        wordDetails: [...state.wordDetails, detail],
-      })),
-
-    markRecorded: (code) => set({ recordedRoom: code }),
-
-    submitPlayer: async (answer) => {
-      const st = get();
-      const r = st.room;
-      const myUid = st.uid;
-      if (!r || r.status !== "playing" || !myUid) return;
-      const key = slotOf(r, myUid);
-      if (!key) return;
-      const my = r.players[key];
-      if (!my || my.lastAnswer?.wordIndex === r.wordIndex) return;
-      if (!st.claimSubmit(r.wordIndex)) return;
-
-      const current = r.words[r.wordIndex];
-      if (!current) return;
-
-      const elapsed = clampElapsed(
-        r.turnStartedAt == null ? TURN_MS : Date.now() - r.turnStartedAt
-      );
-      const timeout = answer == null;
-      const correct = !timeout && answer === current.correctAnswer;
-      const streak = correct ? my.streak + 1 : 0;
-      st.noteBestStreak(streak);
-
-      let hit: Hit | null = null;
-      let oppHit: Hit | null = null;
-      if (correct) {
-        const res = computeHit(elapsed, my.streak);
-        if (res) {
-          hit = {
-            wordIndex: r.wordIndex,
-            damage: res.damage,
-            crit: res.crit,
-            at: Date.now(),
-          };
-        }
-      } else {
-        oppHit = penaltyHit(r.wordIndex);
-      }
-
-      const lastAnswer: LastAnswer = {
-        wordIndex: r.wordIndex,
-        answer: answer ?? "",
-        correct,
-        at: Date.now(),
-      };
-      // Response time + timeout flag drive the 2-option SRS grade in
-      // wordProgress: instant (<2s) masters the word, everything else is a
-      // retry that keeps it in Pool B for active review.
-      st.pushAnswered(
-        {
-          word: current.word,
-          correct,
-          ms: elapsed,
-          timeout: answer == null,
-        },
-        {
-          wordIndex: r.wordIndex,
-          word: current.word,
-          type: current.type,
-          correct,
-        }
-      );
-
-      await submitAnswer(r.code, key, lastAnswer, hit, streak, oppHit).catch(
-        (e) => {
-          console.error("battle:submit", e);
-          // Let the click or the deadline retry this word.
-          get().releaseSubmit();
-        }
-      );
-    },
+    submitPlayer,
 
     recordOutcome: () => {
       const st = get();
@@ -679,7 +648,7 @@ export const useRoomBattleStore = create<
       // and only once per room.
       if (!st.liveSeen) return;
       if (st.recordedRoom === room.code) return;
-      get().markRecorded(room.code);
+      set({ recordedRoom: room.code });
       const slotKey = slotOf(room, st.uid);
       if (!slotKey) return;
       const oppKey: SlotKey = slotKey === "p1" ? "p2" : "p1";
@@ -714,16 +683,11 @@ export const useRoomBattleStore = create<
       recordResult(outcome, room.players[slotKey]?.streak ?? 0).catch((e) =>
         console.error("progress:record", e)
       );
-      const drained = get().drainResults();
+      const drained = get().results;
+      set({ results: [] });
       if (drained.length) {
         saveWordResults(drained);
       }
-    },
-
-    drainResults: () => {
-      const drained = get().results;
-      set({ results: [] });
-      return drained;
     },
   };
 });

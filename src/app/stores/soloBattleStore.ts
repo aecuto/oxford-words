@@ -129,34 +129,21 @@ let pool: Word[] = [];
 let stats: WordStats = {};
 let recorded = false;
 
-const ensureRunner = (): BotRunner => {
-  if (!runner) {
-    runner = createBotRunner((p) => useSoloBattleStore.getState().botAnswer(p));
-  }
-  return runner;
-};
-
 const clearTimers = () => {
   timers.forEach((t) => window.clearTimeout(t));
   timers = [];
 };
 
+// Only the page-facing surface: lifecycle effects plus the answer entry
+// points. Everything else (dealing, bot clock, grading, advancing) stays
+// store-internal and never reaches React.
 type SoloBattleActions = {
   mount: () => Promise<void>;
   unmount: () => void;
-  load: (words: BattleWord[], startedAt: number) => void;
-  loadError: () => void;
-  scheduleBotTurn: (wordIndex: number) => void;
-  botScheduled: () => void;
-  botAnswer: (answer: PendingBotAnswer) => void;
-  submitAnswer: (answer: string | null, now: number) => void;
   // Deadline interval tick: fires the timeout exactly once per word.
   tick: () => void;
   submitPlayer: (answer: string | null) => void;
-  advance: (now: number) => void;
-  reset: () => void;
   recordOutcome: () => void;
-  drainResults: () => WordResult[];
 };
 
 export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
@@ -191,6 +178,231 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
       }, POPUP_LIFETIME_MS);
     };
 
+    const ensureRunner = (): BotRunner => {
+      if (!runner) {
+        runner = createBotRunner((p) => botAnswer(p));
+      }
+      return runner;
+    };
+
+    const load = (words: BattleWord[], startedAt: number) => {
+      recorded = false;
+      commit({ ...freshSoloBattle(words, startedAt), results: [] });
+    };
+
+    const loadError = () => commit({ error: "Could not load the word list." });
+
+    const scheduleBotTurn = (wordIndex: number) => {
+      const st = get();
+      const current = st.words[wordIndex];
+      // Feed the brain the live context (HP race, streaks, player pace,
+      // word length); it decides mood, accuracy and think time and fires
+      // the answer itself. If the player resolves the word first,
+      // submitPlayer hands the pending answer to the lag path — exactly
+      // one resolution per word.
+      ensureRunner().schedule(wordIndex, {
+        config: SOLO_BOT,
+        botHpRatio: st.botHp / SOLO_BOT.hp,
+        playerHpRatio: st.myHp / MAX_HP,
+        botStreak: st.botStreak,
+        playerStreak: st.streak,
+        playerPaceMs: st.playerTimes.length
+          ? Math.round(
+              st.playerTimes.reduce((s, t) => s + t, 0) / st.playerTimes.length
+            )
+          : null,
+        wordLength: current?.word.length ?? 6,
+      });
+      if (!get().outcome) commit({ botThinking: true });
+    };
+
+    const botAnswer = (answer: PendingBotAnswer) => {
+      const state = get();
+      // Once decided the battle is frozen: late lag answers can't touch it.
+      if (state.outcome) return;
+      if (answer.correct) {
+        // computeHit can only return null past the turn deadline, which
+        // the bot's think time never reaches — guarded anyway to mirror
+        // damage.ts.
+        const hit = computeHit(answer.thinkMs, state.botStreak);
+        if (!hit) {
+          commit({ botThinking: false });
+          return;
+        }
+        spawnPopup("me", hit.damage, hit.crit);
+        const myHp = Math.max(0, state.myHp - hit.damage);
+        commit({
+          botThinking: false,
+          botStreak: state.botStreak + 1,
+          myHp,
+          outcome: myHp <= 0 ? "lose" : null,
+        });
+      } else {
+        // The bot pays for its own misses — same price the player pays —
+        // so its ~15 HP of self-damage per battle is part of the KO race.
+        spawnPopup("opp", WRONG_ANSWER_HIT, false);
+        const botHp = Math.max(0, state.botHp - WRONG_ANSWER_HIT);
+        commit({
+          botThinking: false,
+          botStreak: 0,
+          botHp,
+          outcome: botHp <= 0 ? "win" : null,
+        });
+      }
+    };
+
+    const submitAnswer = (answer: string | null, now: number) => {
+      const state = get();
+      if (state.outcome || state.answerState !== "idle") return;
+      const current = state.words[state.wordIndex];
+      if (!current) return;
+
+      const elapsed = clampElapsed(
+        state.startedAt == null ? TURN_MS : now - state.startedAt
+      );
+      const timeout = answer == null;
+      const correct = !timeout && answer === current.correctAnswer;
+      // Response time + timeout flag drive the 2-option SRS grade in
+      // wordProgress: instant (<2s) masters the word, everything else is a
+      // retry that keeps it in Pool B for active review.
+      const instant = gradeAnswer(correct, elapsed, timeout) === "instant";
+      // A timeout is an absence of an answer, not a slow one — it never
+      // feeds the player's pace.
+      const playerTimes = timeout
+        ? state.playerTimes
+        : [...state.playerTimes, elapsed].slice(-5);
+      const streak = correct ? state.streak + 1 : 0;
+
+      let dealt = 0;
+      if (correct) {
+        const hit = computeHit(elapsed, state.streak);
+        if (hit) {
+          dealt = hit.damage;
+          spawnPopup("opp", hit.damage, hit.crit);
+        }
+      } else {
+        spawnPopup("me", WRONG_ANSWER_HIT, false);
+      }
+      const botHp = correct ? Math.max(0, state.botHp - dealt) : state.botHp;
+      const myHp = correct
+        ? state.myHp
+        : Math.max(0, state.myHp - WRONG_ANSWER_HIT);
+
+      const wordResults = [...state.wordResults];
+      wordResults[state.wordIndex] = correct;
+      const wordMarks = [...state.wordMarks];
+      wordMarks[state.wordIndex] = instant;
+
+      commit({
+        selected: answer ?? "",
+        answerState: correct ? "correct" : timeout ? "timeout" : "wrong",
+        playerTimes,
+        streak,
+        bestStreak: Math.max(state.bestStreak, streak),
+        botHp,
+        myHp,
+        wordResults,
+        wordMarks,
+        wordDetails: [
+          ...state.wordDetails,
+          {
+            word: current.word,
+            type: current.type,
+            pronounceURL: current.pronounceURL,
+            answer: current.correctAnswer,
+            correct,
+            instant,
+            dealt: state.botHp - botHp,
+            taken: state.myHp - myHp,
+          },
+        ],
+        results: [
+          ...state.results,
+          { word: current.word, correct, ms: elapsed, timeout },
+        ],
+      });
+    };
+
+    const advance = (now: number) => {
+      const state = get();
+      if (state.outcome) return;
+      // KO checks run here, one settle window after the word resolved, so
+      // the bot's lag answer can still land (and KO) during it.
+      if (state.botHp <= 0) {
+        commit({ outcome: "win" });
+        return;
+      }
+      if (state.myHp <= 0) {
+        commit({ outcome: "lose" });
+        return;
+      }
+      if (state.wordIndex + 1 >= state.words.length) {
+        commit({
+          outcome:
+            state.myHp / MAX_HP > state.botHp / SOLO_BOT.hp ? "win" : "lose",
+        });
+        return;
+      }
+      commit({
+        wordIndex: state.wordIndex + 1,
+        selected: null,
+        answerState: "idle",
+        startedAt: now,
+      });
+    };
+
+    const submitPlayer = (answer: string | null) => {
+      const st = get();
+      if (st.answerState !== "idle" || st.outcome) return;
+      if (!st.words[st.wordIndex]) return;
+
+      // The store action grades the pick, deals damage and spawns the
+      // popup from one snapshot.
+      submitAnswer(answer, Date.now());
+
+      // The player resolved the word first: the runner kills its natural
+      // timer and lands the in-flight decision a beat later on the bot's
+      // own clock, so the two answers never resolve in the same instant —
+      // like two humans committing at slightly different moments.
+      ensureRunner().lagResolve(st.wordIndex);
+
+      // Same settle window as before: KO checks wait 900ms, then either
+      // the battle ends or the next word starts (advance decides which).
+      const t = window.setTimeout(() => {
+        advance(Date.now());
+        const after = get();
+        if (!after.outcome) scheduleBotTurn(after.wordIndex);
+      }, 900);
+      timers.push(t);
+    };
+
+    const recordOutcome = () => {
+      const st = get();
+      if (!st.outcome || recorded) return;
+      recorded = true;
+      const details = st.wordDetails;
+      saveBattleSummary({
+        outcome: st.outcome,
+        mode: "solo",
+        opponent: SOLO_BOT.name,
+        total: st.words.length,
+        answered: details.length,
+        correct: details.filter((w) => w.correct).length,
+        bestStreak: st.bestStreak,
+        damageDealt: details.reduce((sum, w) => sum + w.dealt, 0),
+        damageTaken: details.reduce((sum, w) => sum + w.taken, 0),
+        words: details,
+      });
+      recordResult(st.outcome, st.streak).catch((e) =>
+        console.error("progress:record", e)
+      );
+      const drained = get().results;
+      set({ results: [] });
+      if (drained.length) {
+        stats = saveWordResults(drained);
+      }
+    };
+
     return {
       ...freshSoloBattle([], null),
 
@@ -199,7 +411,9 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
           pool = await loadWordPool();
           stats = loadWordStats();
           // Returning from the result page remounts the page, so the last
-          // battle's summary is the only record of what was just played.
+          // battle's summary is the only record of what was just played —
+          // hold those words out of the next deal (this replaces the old
+          // reset action: a rematch is just a fresh mount).
           const prevWords = (loadBattleSummary()?.words ?? []).map(
             (w) => w.word
           );
@@ -209,11 +423,11 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
             stats,
             prevWords
           );
-          get().load(picked, Date.now());
-          get().scheduleBotTurn(0);
+          load(picked, Date.now());
+          scheduleBotTurn(0);
         } catch (e) {
           console.error(e);
-          get().loadError();
+          loadError();
         }
       },
 
@@ -222,258 +436,17 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
         runner?.clear();
       },
 
-      load: (words, startedAt) => {
-        recorded = false;
-        commit({ ...freshSoloBattle(words, startedAt), results: [] });
-      },
-
-      loadError: () => commit({ error: "Could not load the word list." }),
-
-      scheduleBotTurn: (wordIndex) => {
-        const st = get();
-        const current = st.words[wordIndex];
-        // Feed the brain the live context (HP race, streaks, player pace,
-        // word length); it decides mood, accuracy and think time and fires
-        // the answer itself. If the player resolves the word first,
-        // submitPlayer hands the pending answer to the lag path — exactly
-        // one resolution per word.
-        ensureRunner().schedule(wordIndex, {
-          config: SOLO_BOT,
-          botHpRatio: st.botHp / SOLO_BOT.hp,
-          playerHpRatio: st.myHp / MAX_HP,
-          botStreak: st.botStreak,
-          playerStreak: st.streak,
-          playerPaceMs: st.playerTimes.length
-            ? Math.round(
-                st.playerTimes.reduce((s, t) => s + t, 0) /
-                  st.playerTimes.length
-              )
-            : null,
-          wordLength: current?.word.length ?? 6,
-        });
-        get().botScheduled();
-      },
-
-      botScheduled: () => {
-        if (get().outcome) return;
-        commit({ botThinking: true });
-      },
-
-      botAnswer: (answer) => {
-        const state = get();
-        // Once decided the battle is frozen: late lag answers can't touch it.
-        if (state.outcome) return;
-        if (answer.correct) {
-          // computeHit can only return null past the turn deadline, which
-          // the bot's think time never reaches — guarded anyway to mirror
-          // damage.ts.
-          const hit = computeHit(answer.thinkMs, state.botStreak);
-          if (!hit) {
-            commit({ botThinking: false });
-            return;
-          }
-          spawnPopup("me", hit.damage, hit.crit);
-          const myHp = Math.max(0, state.myHp - hit.damage);
-          commit({
-            botThinking: false,
-            botStreak: state.botStreak + 1,
-            myHp,
-            outcome: myHp <= 0 ? "lose" : null,
-          });
-        } else {
-          // The bot pays for its own misses — same price the player pays —
-          // so its ~15 HP of self-damage per battle is part of the KO race.
-          spawnPopup("opp", WRONG_ANSWER_HIT, false);
-          const botHp = Math.max(0, state.botHp - WRONG_ANSWER_HIT);
-          commit({
-            botThinking: false,
-            botStreak: 0,
-            botHp,
-            outcome: botHp <= 0 ? "win" : null,
-          });
-        }
-      },
-
-      submitAnswer: (answer, now) => {
-        const state = get();
-        if (state.outcome || state.answerState !== "idle") return;
-        const current = state.words[state.wordIndex];
-        if (!current) return;
-
-        const elapsed = clampElapsed(
-          state.startedAt == null ? TURN_MS : now - state.startedAt
-        );
-        const timeout = answer == null;
-        const correct = !timeout && answer === current.correctAnswer;
-        // Response time + timeout flag drive the 2-option SRS grade in
-        // wordProgress: instant (<2s) masters the word, everything else is a
-        // retry that keeps it in Pool B for active review.
-        const instant = gradeAnswer(correct, elapsed, timeout) === "instant";
-        // A timeout is an absence of an answer, not a slow one — it never
-        // feeds the player's pace.
-        const playerTimes = timeout
-          ? state.playerTimes
-          : [...state.playerTimes, elapsed].slice(-5);
-        const streak = correct ? state.streak + 1 : 0;
-
-        let dealt = 0;
-        if (correct) {
-          const hit = computeHit(elapsed, state.streak);
-          if (hit) {
-            dealt = hit.damage;
-            spawnPopup("opp", hit.damage, hit.crit);
-          }
-        } else {
-          spawnPopup("me", WRONG_ANSWER_HIT, false);
-        }
-        const botHp = correct ? Math.max(0, state.botHp - dealt) : state.botHp;
-        const myHp = correct
-          ? state.myHp
-          : Math.max(0, state.myHp - WRONG_ANSWER_HIT);
-
-        const wordResults = [...state.wordResults];
-        wordResults[state.wordIndex] = correct;
-        const wordMarks = [...state.wordMarks];
-        wordMarks[state.wordIndex] = instant;
-
-        commit({
-          selected: answer ?? "",
-          answerState: correct ? "correct" : timeout ? "timeout" : "wrong",
-          playerTimes,
-          streak,
-          bestStreak: Math.max(state.bestStreak, streak),
-          botHp,
-          myHp,
-          wordResults,
-          wordMarks,
-          wordDetails: [
-            ...state.wordDetails,
-            {
-              word: current.word,
-              type: current.type,
-              pronounceURL: current.pronounceURL,
-              answer: current.correctAnswer,
-              correct,
-              instant,
-              dealt: state.botHp - botHp,
-              taken: state.myHp - myHp,
-            },
-          ],
-          results: [
-            ...state.results,
-            { word: current.word, correct, ms: elapsed, timeout },
-          ],
-        });
-      },
-
       tick: () => {
         const st = get();
         if (st.outcome || st.answerState !== "idle" || st.startedAt == null) {
           return;
         }
         if (Date.now() < st.startedAt + TURN_MS) return;
-        get().submitPlayer(null);
+        submitPlayer(null);
       },
 
-      submitPlayer: (answer) => {
-        const st = get();
-        if (st.answerState !== "idle" || st.outcome) return;
-        if (!st.words[st.wordIndex]) return;
-
-        // The store action grades the pick, deals damage and spawns the
-        // popup from one snapshot.
-        get().submitAnswer(answer, Date.now());
-
-        // The player resolved the word first: the runner kills its natural
-        // timer and lands the in-flight decision a beat later on the bot's
-        // own clock, so the two answers never resolve in the same instant —
-        // like two humans committing at slightly different moments.
-        ensureRunner().lagResolve(st.wordIndex);
-
-        // Same settle window as before: KO checks wait 900ms, then either
-        // the battle ends or the next word starts (advance decides which).
-        const t = window.setTimeout(() => {
-          get().advance(Date.now());
-          const after = get();
-          if (!after.outcome) get().scheduleBotTurn(after.wordIndex);
-        }, 900);
-        timers.push(t);
-      },
-
-      advance: (now) => {
-        const state = get();
-        if (state.outcome) return;
-        // KO checks run here, one settle window after the word resolved, so
-        // the bot's lag answer can still land (and KO) during it.
-        if (state.botHp <= 0) {
-          commit({ outcome: "win" });
-          return;
-        }
-        if (state.myHp <= 0) {
-          commit({ outcome: "lose" });
-          return;
-        }
-        if (state.wordIndex + 1 >= state.words.length) {
-          commit({
-            outcome:
-              state.myHp / MAX_HP > state.botHp / SOLO_BOT.hp ? "win" : "lose",
-          });
-          return;
-        }
-        commit({
-          wordIndex: state.wordIndex + 1,
-          selected: null,
-          answerState: "idle",
-          startedAt: now,
-        });
-      },
-
-      reset: () => {
-        // Words of the battle just played must not reappear in the next one.
-        const prevWords = get().words.map((w) => w.word);
-        clearTimers();
-        ensureRunner().clear();
-        const picked = pickBattleWords(
-          pool,
-          WORDS_PER_BATTLE,
-          stats,
-          prevWords
-        );
-        get().load(picked, Date.now());
-        get().scheduleBotTurn(0);
-      },
-
-      recordOutcome: () => {
-        const st = get();
-        if (!st.outcome || recorded) return;
-        recorded = true;
-        const details = st.wordDetails;
-        saveBattleSummary({
-          outcome: st.outcome,
-          mode: "solo",
-          opponent: SOLO_BOT.name,
-          total: st.words.length,
-          answered: details.length,
-          correct: details.filter((w) => w.correct).length,
-          bestStreak: st.bestStreak,
-          damageDealt: details.reduce((sum, w) => sum + w.dealt, 0),
-          damageTaken: details.reduce((sum, w) => sum + w.taken, 0),
-          words: details,
-        });
-        recordResult(st.outcome, st.streak).catch((e) =>
-          console.error("progress:record", e)
-        );
-        const drained = get().drainResults();
-        if (drained.length) {
-          stats = saveWordResults(drained);
-        }
-      },
-
-      drainResults: () => {
-        const drained = get().results;
-        set({ results: [] });
-        return drained;
-      },
+      submitPlayer,
+      recordOutcome,
     };
   }
 );
