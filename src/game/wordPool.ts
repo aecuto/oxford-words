@@ -1,8 +1,7 @@
 import { flatMap, sampleSize, shuffle, uniq } from "lodash";
-import type { Word } from "./types";
-import { ANSWER_OPTIONS, WORDS_PER_BATTLE, type WordList } from "../lib/gameConfig";
+import type { BattleWord, Word } from "./types";
+import { ANSWER_OPTIONS, DAY_MS, WORDS_PER_BATTLE, type WordList } from "../lib/gameConfig";
 import { loadWordList } from "./wordList";
-import type { BattleWord } from "./types";
 import {
   isDue,
   isMastered,
@@ -104,7 +103,6 @@ export function mergeWordLists(
 //    repeating inside a fresh deal.
 // 5. toBattleWords shuffles the dealt set, so the 1:2 cycle never becomes a
 //    memorizable position pattern.
-const DAY_MS = 86_400_000;
 const RECENT_COOLDOWN_MS = 30 * 60_000;
 
 // A word due right now regardless of cooldown: retry words (ivl 0) are

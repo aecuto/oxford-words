@@ -12,10 +12,9 @@ import {
   pickBattleWords,
 } from "../src/game/wordPool";
 import { saveWordResults, type WordResult, type WordStats } from "../src/game/wordProgress";
-import { ANSWER_OPTIONS, WORDS_PER_BATTLE } from "../src/lib/gameConfig";
+import { ANSWER_OPTIONS, DAY_MS, WORDS_PER_BATTLE } from "../src/lib/gameConfig";
 import type { BattleWord, Word } from "../src/game/types";
 
-const DAY_MS = 86_400_000;
 const BATTLES = 100;
 
 const readList = (name: string): Word[] =>

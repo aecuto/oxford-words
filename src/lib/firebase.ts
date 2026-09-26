@@ -17,6 +17,17 @@ export function getFirebase() {
   return { app, auth: getAuth(app), fs: getFirestore(app) };
 }
 
+// Firestore Timestamps arrive over the wire as { toMillis() }; coerce with a
+// fallback for absent or still-pending server timestamps. The fallback's type
+// flows through, so null stays null and 0 stays 0 at the call site.
+export function tsToMillis<T extends number | null>(
+  ts: unknown,
+  fallback: T,
+): number | T {
+  const t = ts as { toMillis?: () => number } | null | undefined;
+  return typeof t?.toMillis === "function" ? t.toMillis() : fallback;
+}
+
 export async function ensureAnonAuth(): Promise<string> {
   const { auth } = getFirebase();
   if (auth.currentUser) return auth.currentUser.uid;

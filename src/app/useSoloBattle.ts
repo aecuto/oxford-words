@@ -21,7 +21,7 @@ import {
 } from "../lib/gameConfig";
 import { loadBattleSummary, saveBattleSummary, type BattleWordDetail } from "../game/battleSummary";
 import { useDamagePopups } from "./useDamagePopups";
-import type { BattleOutcome } from "./useBattleRoom";
+import type { BattleOutcome, BattleView } from "./useBattleRoom";
 
 type PendingBotAnswer = {
   wordIndex: number;
@@ -367,7 +367,9 @@ export function useSoloBattle() {
     }
   }, [outcome, streak, bot.name]);
 
-  const view = useMemo(() => {
+  // Same shape useBattleRoom returns — BattleScreen is shared by both modes,
+  // so the annotation keeps solo and PvP views structurally in sync.
+  const view: BattleView = useMemo(() => {
     const current = words[wordIndex] ?? null;
     return {
       myName: "YOU",

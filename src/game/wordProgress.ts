@@ -1,6 +1,7 @@
 import {
   ANSWER_INSTANT_MS,
   DAILY_GOAL_CORRECT,
+  DAY_MS,
 } from "../lib/gameConfig";
 
 // The 2-option decision rule — exactly one of two grades per answer:
@@ -42,7 +43,6 @@ export type DailyProgress = {
 
 const KEY = "solo:wordStats:v1";
 const DAILY_KEY = "solo:dailyProgress:v1";
-const DAY_MS = 86_400_000;
 
 export function loadWordStats(): WordStats {
   try {

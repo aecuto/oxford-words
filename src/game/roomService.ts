@@ -16,12 +16,13 @@ import {
 } from "firebase/firestore";
 import {
   COLLECTION,
+  DEFAULT_PLAYER_NAMES,
   MAX_WORDS_PER_ROOM,
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LEN,
   WORDS_PER_BATTLE,
 } from "../lib/gameConfig";
-import { getFirebase } from "../lib/firebase";
+import { getFirebase, tsToMillis } from "../lib/firebase";
 import { mergeWordLists } from "./wordPool";
 import type { BattleWord, Hit, LastAnswer, OpenRoom, RoomDoc, SlotKey, Winner } from "./types";
 import type { ClientRoom, PlayerSlot } from "./types";
@@ -45,16 +46,10 @@ function newSlot(uid: string, name: string, words: BattleWord[]): PlayerSlot {
 
 function toClientRoom(data: RoomDoc | undefined): ClientRoom | null {
   if (!data) return null;
-  const ts = data.turnStartedAt as unknown as { toMillis?: () => number } | null;
   return {
     ...data,
-    turnStartedAt: typeof ts?.toMillis === "function" ? ts.toMillis() : null,
+    turnStartedAt: tsToMillis(data.turnStartedAt, null),
   };
-}
-
-function tsToMillis(ts: unknown): number {
-  const t = ts as { toMillis?: () => number } | null | undefined;
-  return typeof t?.toMillis === "function" ? t.toMillis() : 0;
 }
 
 export const OPEN_ROOM_MAX_AGE_MS = 60 * 60 * 1000;
@@ -127,14 +122,14 @@ export function subscribeOpenRooms(
     for (const d of snap.docs) {
       const data = d.data({ serverTimestamps: "estimate" });
       if (data.players.p2 != null) continue;
-      const createdAt = tsToMillis(data.createdAt);
+      const createdAt = tsToMillis(data.createdAt, 0);
       if (!createdAt || now - createdAt > OPEN_ROOM_MAX_AGE_MS) continue;
-      const heartbeat = tsToMillis(data.heartbeat);
+      const heartbeat = tsToMillis(data.heartbeat, 0);
       const lastActive = heartbeat || createdAt;
       if (now - lastActive > ACTIVE_ROOM_WINDOW_MS) continue;
       rooms.push({
         code: data.code,
-        host: data.players.p1?.name ?? "Player 1",
+        host: data.players.p1?.name ?? DEFAULT_PLAYER_NAMES.p1,
         hostUid: data.hostUid,
         createdAt,
       });
@@ -160,7 +155,7 @@ export async function renamePlayer(
   key: SlotKey,
   name: string
 ): Promise<void> {
-  const fallback = key === "p1" ? "Player 1" : "Player 2";
+  const fallback = DEFAULT_PLAYER_NAMES[key];
   await updateDoc(roomRef(code), {
     [`players.${key}.name`]: name.trim().slice(0, 16) || fallback,
   });

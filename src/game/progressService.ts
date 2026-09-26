@@ -7,7 +7,7 @@ import {
   type DocumentReference,
   type Timestamp,
 } from "firebase/firestore";
-import { ensureAnonAuth, getFirebase } from "../lib/firebase";
+import { ensureAnonAuth, getFirebase, tsToMillis } from "../lib/firebase";
 import { PROGRESS_COLLECTION } from "../lib/gameConfig";
 import type { ResultOutcome } from "./types";
 
@@ -20,12 +20,8 @@ type ProgressDoc = {
   lastPlayedAt: Timestamp | null;
 };
 
-export type Progress = {
-  games: number;
-  wins: number;
-  losses: number;
-  draws: number;
-  bestStreak: number;
+// Same counters as the Firestore doc; only the timestamp is flattened to ms.
+export type Progress = Omit<ProgressDoc, "lastPlayedAt"> & {
   lastPlayedAtMs: number | null;
 };
 
@@ -38,14 +34,13 @@ export async function fetchProgress(uid: string): Promise<Progress | null> {
   const snap = await getDoc(progressRef(uid));
   const data = snap.data();
   if (!data) return null;
-  const ts = data.lastPlayedAt as unknown as { toMillis?: () => number } | null;
   return {
     games: data.games ?? 0,
     wins: data.wins ?? 0,
     losses: data.losses ?? 0,
     draws: data.draws ?? 0,
     bestStreak: data.bestStreak ?? 0,
-    lastPlayedAtMs: typeof ts?.toMillis === "function" ? ts.toMillis() : null,
+    lastPlayedAtMs: tsToMillis(data.lastPlayedAt, null),
   };
 }
 

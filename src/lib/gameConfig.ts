@@ -18,6 +18,16 @@ export const ANSWER_OPTIONS = 2;
 
 export const DAILY_GOAL_CORRECT = WORDS_PER_BATTLE;
 
+// One calendar day in ms — shared by every ivl/due computation
+// (wordProgress, wordPool, the /words page, the smoke script).
+export const DAY_MS = 86_400_000;
+
+// Default display names when a player hasn't picked one.
+export const DEFAULT_PLAYER_NAMES = {
+  p1: "Player 1",
+  p2: "Player 2",
+} as const;
+
 export const POPUP_LIFETIME_MS = 1_100;
 
 export const DAMAGE = {

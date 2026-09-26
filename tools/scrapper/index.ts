@@ -2,25 +2,19 @@ import HTMLParser from "node-html-parser";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+// Same row shape the translators and the runtime pool consume — imported, not
+// copied, so the pipeline can't drift (see src/game/wordData.ts).
+import type { OxWord } from "../../src/game/wordData";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-interface WordData {
-  word: string;
-  type: string;
-  level: string;
-  ox3000: boolean;
-  ox5000: boolean;
-  pronounceURL: string;
-}
 
 fs.readFile(path.join(__dirname, "data.txt"), async (err, data) => {
   if (err) throw err;
 
   const root = HTMLParser.parse(data.toString());
 
-  const result: WordData[] = [];
+  const result: OxWord[] = [];
 
   for (const item of root.querySelectorAll("li")) {
     const ox5000 = !!item.getAttribute("data-ox5000");

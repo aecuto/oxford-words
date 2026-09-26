@@ -27,13 +27,14 @@ import {
   startGame,
 } from "../game/roomService";
 import {
+  DEFAULT_PLAYER_NAMES,
   SOLO_BOT,
   TURN_MS,
   WORDS_PER_BATTLE,
   type WordList,
 } from "../lib/gameConfig";
 import { describeAuthError, ensureAnonAuth } from "../lib/firebase";
-import type { ClientRoom, OpenRoom } from "../game/types";
+import type { ClientRoom, OpenRoom, ResultOutcome } from "../game/types";
 
 const emptySubscribe = () => () => {};
 
@@ -67,7 +68,7 @@ export default function BattleHub() {
   const [myRoom, setMyRoom] = useState<ClientRoom | null>(null);
   // Last solo result from sessionStorage — a personal hook to replay the bot.
   const [lastSolo, setLastSolo] = useState<
-    { outcome: "win" | "lose" | "draw"; correct: number; answered: number } | null
+    { outcome: ResultOutcome; correct: number; answered: number } | null
   >(null);
   // Active word list (3000/5000). Read after mount like lastSolo so the
   // hydrated render matches SSR; the list flows into ProgressPanel as a
@@ -171,7 +172,7 @@ export default function BattleHub() {
       const uid = await ensureAnonAuth();
       const pool = await loadWordPool();
       const words = pickBattleWords(pool, WORDS_PER_BATTLE, loadWordStats());
-      const code = await createRoom(uid, name.trim() || "Player 1", words);
+      const code = await createRoom(uid, name.trim() || DEFAULT_PLAYER_NAMES.p1, words);
       startingRef.current = false;
       setMyRoom(null);
       setMyRoomCode(code);

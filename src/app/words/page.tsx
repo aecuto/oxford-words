@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { SpeakerWaveIcon } from "@heroicons/react/24/solid";
 import { Card, CardBody } from "../components/ui/Card";
+import { POS_CODES } from "../../game/wordData";
 import { dedupeWords, getCorrectAnswer, loadWordPool } from "../../game/wordPool";
 import {
   isMastered,
@@ -12,6 +13,7 @@ import {
   type WordStat,
   type WordStats,
 } from "../../game/wordProgress";
+import { DAY_MS } from "../../lib/gameConfig";
 import type { Word } from "../../game/types";
 import { playWordAudio } from "../playWordAudio";
 
@@ -24,14 +26,6 @@ type ListedWord = {
   level: string;
   thai: string;
   stat: WordStat;
-};
-
-// Type badges stay tiny; only the four POS labels in the data get a short form.
-const TYPE_BADGE: Record<string, string> = {
-  noun: "N",
-  verb: "V",
-  adjective: "ADJ",
-  adverb: "ADV",
 };
 
 function toListedWords(pool: Word[], stats: WordStats): ListedWord[] {
@@ -52,8 +46,6 @@ function toListedWords(pool: Word[], stats: WordStats): ListedWord[] {
     .sort((a, b) => a.word.localeCompare(b.word));
 }
 
-const DAY_MS = 86_400_000;
-
 function WordRow({
   item,
   mastered,
@@ -63,7 +55,7 @@ function WordRow({
   mastered: boolean;
   now: number;
 }) {
-  const badge = TYPE_BADGE[item.type.toLowerCase()];
+  const badge = POS_CODES[item.type.toLowerCase()];
   // Retry words (ivl 0) are always due — that is the "active review" half of
   // the 2-option rule. Mastered words count down to their 14-day review.
   const dueAt = item.stat.lastSeenAt + (item.stat.ivl ?? 0) * DAY_MS;

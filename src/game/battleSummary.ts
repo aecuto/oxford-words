@@ -1,3 +1,5 @@
+import type { ResultOutcome } from "./types";
+
 export type BattleWordDetail = {
   word: string;
   /** part of speech, e.g. "noun" | "verb" */
@@ -15,7 +17,7 @@ export type BattleWordDetail = {
 };
 
 export type BattleSummary = {
-  outcome: "win" | "lose" | "draw";
+  outcome: ResultOutcome;
   mode: "solo" | "room";
   opponent?: string;
   roomCode?: string;

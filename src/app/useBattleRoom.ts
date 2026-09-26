@@ -18,9 +18,17 @@ import type {
   Hit,
   LastAnswer,
   Popup,
+  ResultOutcome,
   SlotKey,
+  Winner,
 } from "../game/types";
-import { TURN_GRACE_MS, TURN_MS, WORDS_PER_BATTLE, WRONG_ANSWER_HIT } from "../lib/gameConfig";
+import {
+  DEFAULT_PLAYER_NAMES,
+  TURN_GRACE_MS,
+  TURN_MS,
+  WORDS_PER_BATTLE,
+  WRONG_ANSWER_HIT,
+} from "../lib/gameConfig";
 import { describeAuthError, ensureAnonAuth } from "../lib/firebase";
 import { useDamagePopups } from "./useDamagePopups";
 import { recordResult } from "../game/progressService";
@@ -32,7 +40,7 @@ import {
 } from "../game/wordProgress";
 import { saveBattleSummary, type BattleWordDetail } from "../game/battleSummary";
 
-export type BattleOutcome = "win" | "lose" | "draw" | null;
+export type BattleOutcome = ResultOutcome | null;
 
 function penaltyHit(wordIndex: number): Hit {
   return {
@@ -227,7 +235,7 @@ export function useBattleRoom(code: string) {
             loadWordStats(),
             excluded
           );
-          await joinRoom(code, myUid, joinName.trim() || "Player 2", myWords);
+          await joinRoom(code, myUid, joinName.trim() || DEFAULT_PLAYER_NAMES.p2, myWords);
           watchRoom(myUid);
           setNeedsJoin(false);
         } catch (e) {
@@ -560,7 +568,7 @@ export function useBattleRoom(code: string) {
   } as const;
 }
 
-function byHp(hp1: number, hp2: number): "p1" | "p2" | "draw" {
+function byHp(hp1: number, hp2: number): Winner {
   if (hp1 === hp2) return "draw";
   return hp1 > hp2 ? "p1" : "p2";
 }

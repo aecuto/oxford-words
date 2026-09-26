@@ -22,15 +22,13 @@ import {
 } from "../../game/wordProgress";
 import { WORDS_PER_BATTLE } from "../../lib/gameConfig";
 import { describeAuthError, ensureAnonAuth } from "../../lib/firebase";
+import type { ResultOutcome } from "../../game/types";
 
 const RESULT_TEXT = {
   win: { title: "VICTORY", color: "text-emerald-500" },
   lose: { title: "DEFEAT", color: "text-red-500" },
   draw: { title: "DRAW", color: "text-amber-500" },
 } as const;
-
-type Outcome = keyof typeof RESULT_TEXT;
-type Mode = "solo" | "room";
 
 function Shell({ children }: { children: ReactNode }) {
   return (
@@ -40,11 +38,11 @@ function Shell({ children }: { children: ReactNode }) {
   );
 }
 
-function parseOutcome(param: string | null): Outcome | null {
+function parseOutcome(param: string | null): ResultOutcome | null {
   return param === "win" || param === "lose" || param === "draw" ? param : null;
 }
 
-function parseMode(param: string | null): Mode | null {
+function parseMode(param: string | null): BattleSummary["mode"] | null {
   return param === "solo" || param === "room" ? param : null;
 }
 

@@ -45,16 +45,21 @@ export interface WordEntry {
   thai: string[];
 }
 
-// One row as the scrapper emits it: a headword repeated once per part of
-// speech. Older artifacts used `pronounce` before `pronounceURL`, and
-// definition/examples only exist if the scrape ever adds them — everything
-// beyond the core fields is optional so any words.json parses.
-export interface RawWord {
+// Core fields every row carries, raw or normalized — spelled once so the
+// shapes below can never drift apart on them.
+interface WordRow {
   word: string;
   type: string;
   level: string;
   ox3000: boolean;
   ox5000: boolean;
+}
+
+// One row as the scrapper emits it: a headword repeated once per part of
+// speech. Older artifacts used `pronounce` before `pronounceURL`, and
+// definition/examples only exist if the scrape ever adds them — everything
+// beyond the core fields is optional so any words.json parses.
+export interface RawWord extends WordRow {
   pronounceURL?: string;
   pronounce?: string;
   definition?: string | string[];
@@ -66,12 +71,7 @@ export interface RawWord {
 // A normalized row: one pronounceURL plus the optional prompt-only context
 // translators attach (definition/examples). These extras are never persisted —
 // translator output strips them before writing the runtime files.
-export interface OxWord {
-  word: string;
-  type: string;
-  level: string;
-  ox3000: boolean;
-  ox5000: boolean;
+export interface OxWord extends WordRow {
   pronounceURL: string;
   definition?: string;
   examples?: string[];
@@ -101,7 +101,8 @@ export function normalizeRawWord(r: RawWord): Word {
     ox3000: r.ox3000,
     ox5000: r.ox5000,
     pronounceURL: r.pronounceURL ?? r.pronounce ?? "-",
-    definition: normalizeList(r.definition ?? r.definitions).join("; ") || undefined,
+    definition:
+      normalizeList(r.definition ?? r.definitions).join("; ") || undefined,
     examples: normalizeList(r.example ?? r.examples),
     entries: [],
   };
