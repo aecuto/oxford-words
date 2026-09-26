@@ -18,42 +18,13 @@ const VOLUMES: Record<SfxName, number> = {
   draw: 0.45,
 };
 
-const MUTED_KEY = "sfxMuted";
-
-let muted = false;
-if (typeof window !== "undefined") {
-  try {
-    muted = window.localStorage.getItem(MUTED_KEY) === "1";
-  } catch {}
-}
-
-const listeners = new Set<(muted: boolean) => void>();
 const cache = new Map<SfxName, HTMLAudioElement>();
-
-export function isSfxMuted(): boolean {
-  return muted;
-}
-
-export function setSfxMuted(value: boolean): void {
-  muted = value;
-  try {
-    window.localStorage.setItem(MUTED_KEY, value ? "1" : "0");
-  } catch {}
-  listeners.forEach((notify) => notify(muted));
-}
-
-export function onSfxMuteChange(fn: (muted: boolean) => void): () => void {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-}
 
 // Warm the browser cache before the first hit lands: sounds are remote, so
 // creating them on first play made the first hit/crit silent-lagged while the
 // mp3 downloaded. Call once when the battle screen mounts.
 export function preloadSfx(): void {
-  if (muted || typeof window === "undefined") return;
+  if (typeof window === "undefined") return;
   for (const name of Object.keys(SFX_URLS) as SfxName[]) {
     if (cache.has(name)) continue;
     const audio = new Audio(SFX_URLS[name]);
@@ -65,7 +36,7 @@ export function preloadSfx(): void {
 }
 
 export function playSfx(name: SfxName): void {
-  if (muted || typeof window === "undefined") return;
+  if (typeof window === "undefined") return;
   let audio = cache.get(name);
   if (!audio) {
     audio = new Audio(SFX_URLS[name]);

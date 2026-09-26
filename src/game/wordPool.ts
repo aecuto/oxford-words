@@ -16,31 +16,6 @@ export function getCorrectAnswer(word: Word): string {
   return word.thai;
 }
 
-export function buildAnswers(current: Word, pool: Word[]): string[] {
-  const correct = getCorrectAnswer(current);
-  const distractors: string[] = [];
-  for (const w of pool) {
-    if (w.word === current.word) continue;
-    const a = getCorrectAnswer(w);
-    if (a && a !== correct) distractors.push(a);
-  }
-  // uniq before sampling: distractors can repeat the same answer string, and
-  // sampling duplicates would shrink the grid below ANSWER_OPTIONS.
-  const picked = sampleSize(uniq(distractors), ANSWER_OPTIONS - 1);
-  return shuffle([correct, ...picked]);
-}
-
-export function buildBattleWord(word: Word, pool: Word[]): BattleWord {
-  return {
-    word: word.word,
-    type: word.type,
-    level: word.level,
-    pronounceURL: word.pronounceURL,
-    correctAnswer: getCorrectAnswer(word),
-    options: buildAnswers(word, pool),
-  };
-}
-
 // Interleave two players' priority lists (host word, guest word, ...) so the
 // shared room set reflects both players' review/new words, deduped by word.
 export function mergeWordLists(

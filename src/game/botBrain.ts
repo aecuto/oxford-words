@@ -47,7 +47,7 @@ export type BotBrainInput = {
   wordLength: number;
 };
 
-export type BotDecision = {
+type BotDecision = {
   correct: boolean;
   thinkMs: number;
   mood: BotMood;
