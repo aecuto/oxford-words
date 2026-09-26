@@ -13,12 +13,6 @@ export const POS_CODES: Record<string, string> = {
   adverb: "ADV",
 };
 
-// Filter code for a word's own POS, or undefined for kinds with no code
-// (prepositions, articles, ...) — undefined means "use all entries".
-export function posFilter(type: string): string | undefined {
-  return POS_CODES[type.toLowerCase()];
-}
-
 // Label used to TYPE a produced entry; unusual kinds fall back to their raw
 // POS uppercased so every entry still carries a stable code.
 export function posCode(type: string): string {
@@ -40,70 +34,45 @@ export function dedupeByHeadword<T extends { word: string; ox3000: boolean }>(
 }
 
 // --- scrapper row types + normalization ---
-export interface WordEntry {
-  type: string;
-  thai: string[];
-}
-
-// Core fields every row carries, raw or normalized — spelled once so the
-// shapes below can never drift apart on them.
-interface WordRow {
+// One row exactly as the scrapper's words.json emits it: a headword repeated
+// once per part of speech, pronounceURL always present ("-" when missing).
+export interface WordRow {
   word: string;
   type: string;
   level: string;
   ox3000: boolean;
   ox5000: boolean;
-}
-
-// One row as the scrapper emits it: a headword repeated once per part of
-// speech. Older artifacts used `pronounce` before `pronounceURL`, and
-// definition/examples only exist if the scrape ever adds them — everything
-// beyond the core fields is optional so any words.json parses.
-export interface RawWord extends WordRow {
-  pronounceURL?: string;
-  pronounce?: string;
-  definition?: string | string[];
-  definitions?: string | string[];
-  example?: string | string[];
-  examples?: string | string[];
-}
-
-// A normalized row: one pronounceURL plus the optional prompt-only context
-// translators attach (definition/examples). These extras are never persisted —
-// translator output strips them before writing the runtime files.
-export interface OxWord extends WordRow {
   pronounceURL: string;
-  definition?: string;
-  examples?: string[];
 }
 
-// The runtime word row: an OxWord plus its per-POS Thai entries. Re-exported
+// The runtime word row: a scrapper row plus the flat answer string for the
+// row's own POS ("present" verb → นำเสนอ, noun → ของขวัญ — resolved at build
+// time by resolveThai, so no nested entries ship to the browser). Re-exported
 // as Word by src/game/types.ts and reused as-is by both translators.
-export interface Word extends OxWord {
-  entries: WordEntry[];
+export interface Word extends WordRow {
+  thai: string;
 }
 
-function normalizeList(value?: string | string[]): string[] {
-  if (!value) return [];
-  return (Array.isArray(value) ? value : [value])
-    .map((v) => String(v).trim())
-    .filter(Boolean);
+// Lifts a scrapper row into a Word; thai is the empty placeholder each
+// translator fills in with resolveThai after translating.
+export function normalizeWord(r: WordRow): Word {
+  return { ...r, thai: "" };
 }
 
-// Collapses a raw scrapper row into a Word: pronounce fallback, plural field
-// spellings (definition/definitions, example/examples) merged. entries is the
-// empty placeholder each translator fills in after translating.
-export function normalizeRawWord(r: RawWord): Word {
-  return {
-    word: r.word,
-    type: r.type,
-    level: r.level,
-    ox3000: r.ox3000,
-    ox5000: r.ox5000,
-    pronounceURL: r.pronounceURL ?? r.pronounce ?? "-",
-    definition:
-      normalizeList(r.definition ?? r.definitions).join("; ") || undefined,
-    examples: normalizeList(r.example ?? r.examples),
-    entries: [],
-  };
+// Flattens a row's per-POS translations (category → thai list, insertion
+// order preserved) into the answer string the runtime quizzes on: the row's
+// own POS first (up to 3 uniq translations), else the first translation of
+// any category. Shared by both translators so their flat output can't drift.
+export function resolveThai(
+  type: string,
+  thaiByType: Map<string, string[]>
+): string {
+  const code = POS_CODES[type.toLowerCase()];
+  const picked: string[] = [];
+  for (const [cat, list] of thaiByType) {
+    if (!code || cat.startsWith(code)) picked.push(...list);
+  }
+  const uniqThai = [...new Set(picked)];
+  if (uniqThai.length > 0) return uniqThai.slice(0, 3).join(", ");
+  return [...thaiByType.values()].flat()[0] || "";
 }

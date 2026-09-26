@@ -10,7 +10,8 @@
     "smoke": "tsx scripts/smoke-wordPool.ts",
     "fetch-oxford-words": "tsx tools/scrapper/index.ts",
     "translate-etlex": "tsx tools/translator/translator-etlex/index.ts",
-    "translate-ai": "tsx tools/translator/translator-gemini/gemini.ts"
+    "translate-ai": "tsx tools/translator/translator-gemini/cache.ts",
+    "translate-ai-map": "tsx tools/translator/translator-gemini/map.ts"
   },
   "dependencies": {
     "@emotion/css": "^11.13.5",

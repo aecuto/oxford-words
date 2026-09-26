@@ -3,10 +3,10 @@ import path from "path";
 import { parse } from "csv-parse/sync";
 import {
   dedupeByHeadword,
-  normalizeRawWord,
-  type RawWord,
+  normalizeWord,
+  resolveThai,
   type Word,
-  type WordEntry,
+  type WordRow,
 } from "../../../src/game/wordData";
 
 // --- types ---
@@ -32,8 +32,8 @@ const OUTPUT_3000_PATH = path.resolve(__dirname, "words.3000.th.json");
 const OUTPUT_5000_PATH = path.resolve(__dirname, "words.5000.th.json");
 const MISSING_PATH = path.resolve(__dirname, "missing.txt");
 
-// --- build entries from matched rows ---
-function buildEntries(rows: CsvRow[]): WordEntry[] {
+// --- thai translations per lexicon category (e-cat) from matched rows ---
+function buildThaiMap(rows: CsvRow[]): Map<string, string[]> {
   const catMap = new Map<string, Set<string>>();
 
   for (const row of rows) {
@@ -51,10 +51,7 @@ function buildEntries(rows: CsvRow[]): WordEntry[] {
     }
   }
 
-  return Array.from(catMap.entries()).map(([eCat, tEntries]) => ({
-    type: eCat,
-    thai: Array.from(tEntries),
-  }));
+  return new Map([...catMap].map(([eCat, tEntries]) => [eCat, [...tEntries]]));
 }
 
 // --- search by e-search exact match ---
@@ -62,16 +59,13 @@ function searchByESearch(word: string, rows: CsvRow[]): CsvRow[] {
   return rows.filter((r) => r["e-search"]?.trim() === word);
 }
 
-// --- build single word entry ---
-function buildWordEntry(base: Word, rows: CsvRow[]): ResultWord {
+// --- build single word: the row's thai resolved straight from its CSV matches ---
+function buildWord(base: Word, rows: CsvRow[]): ResultWord {
   const matched = searchByESearch(base.word, rows);
-  const source: ResultWord["source"] =
-    matched.length > 0 ? "e-search" : "missing";
-
   return {
     ...base,
-    entries: buildEntries(matched),
-    source,
+    thai: resolveThai(base.type, buildThaiMap(matched)),
+    source: matched.length > 0 ? "e-search" : "missing",
   };
 }
 
@@ -88,16 +82,13 @@ function main() {
     trim: true,
   });
 
-  // rows come in via the shared normalizeRawWord (pronounce fallback, list
-  // normalization); this translator ignores definition/examples and strips
-  // them before writing
+  // rows come in via the shared normalizeWord (scrapper row → Word); each
+  // row's thai is resolved straight from its CSV matches below
   const oxWords: Word[] = (
-    JSON.parse(fs.readFileSync(WORDS_PATH, "utf-8")) as RawWord[]
-  ).map(normalizeRawWord);
+    JSON.parse(fs.readFileSync(WORDS_PATH, "utf-8")) as WordRow[]
+  ).map(normalizeWord);
 
-  const result: ResultWord[] = oxWords.map((base) =>
-    buildWordEntry(base, csvRows),
-  );
+  const result: ResultWord[] = oxWords.map((base) => buildWord(base, csvRows));
 
   // save level files
   // Same order as loadWordPool's runtime chain: answerable filter first (at
@@ -106,20 +97,11 @@ function main() {
   // ox5000 rows exactly like the runtime pool does. Files are disjoint:
   // words.3000.th.json holds the ox3000 words, words.5000.th.json only the
   // extra ox5000 words — loadWordPool("5000") fetches and merges both.
-  // `source` is stripped: answerable entries are all "e-search" build
-  // metadata. Minified, like before — Vercel compresses on the wire.
-  const answerable = result.filter((w) =>
-    w.entries.some((e) => e.thai.length > 0),
-  );
+  // `source` is build metadata — the runtime Word shape is word…pronounceURL
+  // + thai, already flat. Minified, like before — Vercel compresses on the wire.
+  const answerable = result.filter((w) => w.thai !== "");
   const deduped = dedupeByHeadword(answerable);
-  // `source` and the prompt-only definition/examples are build metadata —
-  // the runtime Word shape is word…pronounceURL + entries
-  const stripSource = ({
-    source: _source,
-    definition: _definition,
-    examples: _examples,
-    ...rest
-  }: ResultWord) => rest;
+  const stripSource = ({ source: _source, ...rest }: ResultWord): Word => rest;
   fs.writeFileSync(
     OUTPUT_3000_PATH,
     JSON.stringify(deduped.filter((w) => w.ox3000).map(stripSource)),

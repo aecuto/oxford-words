@@ -1,4 +1,4 @@
-import { flatMap, sampleSize, shuffle, uniq } from "lodash";
+import { sampleSize, shuffle, uniq } from "lodash";
 import type { BattleWord, Word } from "./types";
 import { ANSWER_OPTIONS, DAY_MS, WORDS_PER_BATTLE, type WordList } from "../lib/gameConfig";
 import { loadWordList } from "./wordList";
@@ -8,30 +8,12 @@ import {
   type WordStat,
   type WordStats,
 } from "./wordProgress";
-import { POS_CODES, dedupeByHeadword } from "./wordData";
+import { dedupeByHeadword } from "./wordData";
 
-// The pool is a stable module-level object, so memoizing per word object turns
-// the repeated O(pool) scans in buildAnswers/loadWordPool into cache hits.
-const answerCache = new WeakMap<Word, string>();
-
+// The answer is resolved at build time (resolveThai in wordData.ts) and ships
+// flat on the word, so grading is a plain field read.
 export function getCorrectAnswer(word: Word): string {
-  const cached = answerCache.get(word);
-  if (cached !== undefined) return cached;
-  const entryType = POS_CODES[word.type.toLowerCase()];
-  const entries = word.entries ?? [];
-
-  const filteredEntries = entryType
-    ? entries.filter((e) => e.type.startsWith(entryType))
-    : entries;
-
-  const thaiTranslations = uniq(flatMap(filteredEntries, (e) => e.thai ?? []));
-
-  const answer =
-    thaiTranslations.length > 0
-      ? thaiTranslations.slice(0, 3).join(", ")
-      : entries.flatMap((e) => e.thai ?? [])[0] || "";
-  answerCache.set(word, answer);
-  return answer;
+  return word.thai;
 }
 
 export function buildAnswers(current: Word, pool: Word[]): string[] {

@@ -210,7 +210,7 @@ async function main() {
       ox3000: true,
       ox5000: false,
       pronounceURL: "",
-      entries: [{ type: "N", thai: [`t${i}`] }],
+      thai: `t${i}`,
     });
     const tiny = [0, 1, 2, 3, 4].map(fake);
     const words = pickBattleWords(tiny, 4, {}, ["w0", "w1", "w2"]);
