@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState, type ReactNode } from "react";
+import { Suspense, useEffect, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { cx } from "@emotion/css";
 import { SpeakerWaveIcon } from "@heroicons/react/24/solid";
@@ -8,7 +8,6 @@ import { Button } from "../components/ui/Button";
 import { Card, CardBody } from "../components/ui/Card";
 import { DailyGoal } from "../components/DailyGoal";
 import { playWordAudio } from "../playWordAudio";
-import { useStoredName } from "../useStoredName";
 import {
   loadBattleSummary,
   type BattleSummary,
@@ -23,6 +22,7 @@ import {
 import { WORDS_PER_BATTLE } from "../../lib/gameConfig";
 import { describeAuthError, ensureAnonAuth } from "../../lib/firebase";
 import type { ResultOutcome } from "../../game/types";
+import { useResultStore } from "../stores/resultStore";
 
 const RESULT_TEXT = {
   win: { title: "VICTORY", color: "text-emerald-500" },
@@ -73,16 +73,23 @@ function ResultPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [summary, setSummary] = useState<BattleSummary | null>(null);
-  const [daily, setDaily] = useState<DailyProgress | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
+  const {
+    summary,
+    daily,
+    creating,
+    createError,
+    setSummary,
+    setDaily,
+    setCreating,
+    setCreateError,
+  } = useResultStore();
 
   useEffect(() => {
-    /* eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot: read session storage after mount to avoid SSR/hydration mismatch */
+    // One-shot: read session storage after mount to avoid SSR/hydration
+    // mismatch.
     setSummary(loadBattleSummary());
     setDaily(currentDailyProgress());
-  }, []);
+  }, [setSummary, setDaily]);
 
   const outcome = summary?.outcome ?? parseOutcome(searchParams.get("outcome"));
   const mode = summary?.mode ?? parseMode(searchParams.get("mode"));

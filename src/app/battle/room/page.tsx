@@ -1,10 +1,10 @@
 "use client";
 
-import { Suspense, useEffect, useRef } from "react";
+import { Suspense, useCallback, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { cx } from "@emotion/css";
-import { useBattleRoom } from "../../useBattleRoom";
-import { useStoredName } from "../../useStoredName";
+import { useRoomBattleStore } from "../../stores/roomBattleStore";
+import { useNameStore } from "../../stores/nameStore";
 import { BattleScreen } from "../../components/battle/BattleScreen";
 import { Card, CardBody } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
@@ -16,9 +16,49 @@ function RoomPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const code = (searchParams.get("id") ?? "").toUpperCase();
-  const { name } = useStoredName();
+  const name = useNameStore((s) => s.name);
+  const { phase, error, view, isHost, room } = useRoomBattleStore();
 
-  const { phase, error, view, submit, join, isHost } = useBattleRoom(code);
+  const submit = useCallback((answer: string | null) => {
+    void useRoomBattleStore.getState().submitPlayer(answer);
+  }, []);
+  const join = useCallback((joinName: string) => {
+    void useRoomBattleStore.getState().join(joinName);
+  }, []);
+
+  useEffect(() => {
+    useNameStore.getState().sync();
+  }, []);
+
+  useEffect(() => {
+    useRoomBattleStore.getState().connect(code);
+    return () => useRoomBattleStore.getState().disconnect();
+  }, [code]);
+
+  useEffect(() => {
+    useRoomBattleStore.getState().maybeAutoStart();
+  }, [room]);
+
+  useEffect(() => {
+    useRoomBattleStore.getState().settleTurn();
+  }, [room]);
+
+  // Turn deadline without per-tick renders: the interval only reads the
+  // store and submits the timeout once at expiry, so the timer never
+  // re-renders the whole battle screen (TimerBar animates itself).
+  useEffect(() => {
+    const id = window.setInterval(
+      () => useRoomBattleStore.getState().deadlineTick(),
+      100
+    );
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (room?.status === "ended") {
+      useRoomBattleStore.getState().recordOutcome();
+    }
+  }, [room]);
 
   const autoJoinedRef = useRef(false);
   useEffect(() => {

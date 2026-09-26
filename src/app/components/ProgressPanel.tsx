@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import Link from "next/link";
 import { Card, CardBody } from "./ui/Card";
 import { DailyGoal } from "./DailyGoal";
@@ -9,11 +9,11 @@ import {
   currentDailyProgress,
   isMastered,
   loadWordStats,
-  type DailyProgress,
 } from "../../game/wordProgress";
-import { fetchProgress, type Progress } from "../../game/progressService";
+import { fetchProgress } from "../../game/progressService";
 import { ensureAnonAuth } from "../../lib/firebase";
 import type { WordList } from "../../lib/gameConfig";
+import { useProgressStore } from "../stores/progressStore";
 
 function pct(part: number, total: number): string {
   if (total <= 0) return "0%";
@@ -44,10 +44,16 @@ function Stat({
 }
 
 export function ProgressPanel({ list }: { list?: WordList }) {
-  const [poolTotal, setPoolTotal] = useState(0);
-  const [counts, setCounts] = useState({ seen: 0, mastered: 0 });
-  const [record, setRecord] = useState<Progress | null>(null);
-  const [daily, setDaily] = useState<DailyProgress | null>(null);
+  const {
+    poolTotal,
+    counts,
+    record,
+    daily,
+    setPoolTotal,
+    setCounts,
+    setRecord,
+    setDaily,
+  } = useProgressStore();
 
   // Per-list counts + pool denominator: the SRS store is one global map keyed
   // by headword, but the two lists are exclusive, so intersecting its keys
@@ -75,7 +81,7 @@ export function ProgressPanel({ list }: { list?: WordList }) {
     return () => {
       alive = false;
     };
-  }, [list]);
+  }, [list, setPoolTotal, setCounts]);
 
   // Daily goal and match record stay list-independent.
   useEffect(() => {
@@ -100,7 +106,7 @@ export function ProgressPanel({ list }: { list?: WordList }) {
       alive = false;
       window.clearInterval(dayTimer);
     };
-  }, []);
+  }, [setDaily, setRecord]);
 
   const seen = counts.seen;
   const mastered = counts.mastered;

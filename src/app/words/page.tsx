@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { SpeakerWaveIcon } from "@heroicons/react/24/solid";
@@ -10,23 +10,16 @@ import { dedupeWords, getCorrectAnswer, loadWordPool } from "../../game/wordPool
 import {
   isMastered,
   loadWordStats,
-  type WordStat,
   type WordStats,
 } from "../../game/wordProgress";
 import { DAY_MS } from "../../lib/gameConfig";
 import type { Word } from "../../game/types";
 import { playWordAudio } from "../playWordAudio";
-
-type WordFilter = "learning" | "mastered";
-
-type ListedWord = {
-  word: string;
-  pronounceURL: string;
-  type: string;
-  level: string;
-  thai: string;
-  stat: WordStat;
-};
+import {
+  useWordsStore,
+  type ListedWord,
+  type WordFilter,
+} from "../stores/wordsStore";
 
 function toListedWords(pool: Word[], stats: WordStats): ListedWord[] {
   const byWord = new Map(dedupeWords(pool).map((w) => [w.word, w]));
@@ -137,12 +130,21 @@ export default function WordsPage() {
 
 function WordsPageInner() {
   const searchParams = useSearchParams();
-  const [filter, setFilter] = useState<WordFilter>(() =>
-    parseFilter(searchParams.get("filter")),
-  );
-  const [words, setWords] = useState<ListedWord[] | null>(null);
-  // Clock captured once at load time; due countdowns don't need to tick live.
-  const [loadedAt, setLoadedAt] = useState(0);
+  const {
+    filter,
+    words,
+    loadedAt,
+    setFilter,
+    setWords,
+    setLoadedAt,
+  } = useWordsStore();
+
+  // Deep link ?filter=learning|mastered (lobby progress tiles) opens the tab;
+  // the remembered tab rehydrates first and the deep link wins when present.
+  useEffect(() => {
+    useWordsStore.persist.rehydrate();
+    setFilter(parseFilter(searchParams.get("filter")));
+  }, [searchParams, setFilter]);
 
   useEffect(() => {
     let alive = true;
@@ -157,7 +159,7 @@ function WordsPageInner() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [setWords, setLoadedAt]);
 
   const counts = useMemo(() => {
     const all = words ?? [];

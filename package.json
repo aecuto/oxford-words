@@ -28,7 +28,8 @@
     "react-dom": "^19.3.0",
     "react-hotkeys-hook": "^4.6.2",
     "react-iframe": "^1.8.5",
-    "sleep-promise": "^9.1.0"
+    "sleep-promise": "^9.1.0",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@types/lodash": "^4.17.25",

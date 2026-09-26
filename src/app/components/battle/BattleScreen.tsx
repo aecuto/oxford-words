@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { cx } from "@emotion/css";
 import { FlagIcon } from "@heroicons/react/24/solid";
-import type { BattleView } from "../../useBattleRoom";
+import type { BattleView } from "../../stores/roomBattleStore";
 import { isCritReady } from "../../../game/damage";
 import { TURN_MS } from "../../../lib/gameConfig";
 import { playSfx, preloadSfx } from "../../../lib/sfx";

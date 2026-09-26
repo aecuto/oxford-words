@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardBody } from "./components/ui/Card";
@@ -8,7 +8,7 @@ import { Button } from "./components/ui/Button";
 import { Logo } from "./components/Logo";
 import { ProgressPanel } from "./components/ProgressPanel";
 import { WordListSelect } from "./components/WordListSelect";
-import { useStoredName } from "./useStoredName";
+import { useNameStore } from "./stores/nameStore";
 import {
   pickBattleWords,
   loadWordPool,
@@ -34,7 +34,7 @@ import {
 } from "../lib/gameConfig";
 import { SOLO_BOT } from "../game/botBrain";
 import { describeAuthError, ensureAnonAuth } from "../lib/firebase";
-import type { ClientRoom, OpenRoom, ResultOutcome } from "../game/types";
+import { useLobbyStore } from "./stores/lobbyStore";
 
 const emptySubscribe = () => () => {};
 
@@ -59,38 +59,46 @@ export default function BattleHub() {
     () => true,
     () => false,
   );
-  const { name, saveName } = useStoredName();
-  const [busy, setBusy] = useState<"create" | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [openRooms, setOpenRooms] = useState<OpenRoom[] | null>(null);
-  const [myUid, setMyUid] = useState<string | null>(null);
-  const [myRoomCode, setMyRoomCode] = useState<string | null>(null);
-  const [myRoom, setMyRoom] = useState<ClientRoom | null>(null);
-  // Last solo result from sessionStorage — a personal hook to replay the bot.
-  const [lastSolo, setLastSolo] = useState<
-    { outcome: ResultOutcome; correct: number; answered: number } | null
-  >(null);
-  // Active word list (3000/5000). Read after mount like lastSolo so the
-  // hydrated render matches SSR; the list flows into ProgressPanel as a
-  // prop so the pool total and the per-list seen counts refresh on a switch.
-  const [wordList, setWordList] = useState<WordList>("3000");
+  const name = useNameStore((s) => s.name);
+  const {
+    busy,
+    error,
+    openRooms,
+    myUid,
+    myRoomCode,
+    myRoom,
+    lastSolo,
+    wordList,
+    setBusy,
+    setError,
+    setOpenRooms,
+    setMyUid,
+    setMyRoom,
+    setMyRoomCode,
+    setLastSolo,
+    setWordList,
+  } = useLobbyStore();
   const startingRef = useRef(false);
 
   useEffect(() => {
+    useNameStore.getState().sync();
     const s = loadBattleSummary();
-    /* eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot: read session storage + the stored word list after mount to avoid SSR/hydration mismatch */
+    // One-shot: read session storage + the stored word list after mount to
+    // avoid SSR/hydration mismatch.
     setLastSolo(
       s && s.mode === "solo"
         ? { outcome: s.outcome, correct: s.correct, answered: s.answered }
         : null,
     );
     setWordList(loadWordList());
-  }, []);
+  }, [setLastSolo, setWordList]);
 
   const changeWordList = (list: WordList) => {
     setWordList(list);
     saveWordList(list);
   };
+
+  const saveName = (value: string) => useNameStore.getState().saveName(value);
 
   useEffect(() => {
     let alive = true;
@@ -109,7 +117,7 @@ export default function BattleHub() {
       alive = false;
       unsub?.();
     };
-  }, []);
+  }, [setMyUid, setOpenRooms]);
 
   useEffect(() => {
     if (!myRoomCode) return;
@@ -139,7 +147,7 @@ export default function BattleHub() {
       alive = false;
       unsub();
     };
-  }, [myRoomCode]);
+  }, [myRoomCode, setMyRoom]);
 
   useEffect(() => {
     if (!myRoomCode) return;
