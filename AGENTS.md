@@ -18,7 +18,7 @@
 
 ## Architecture
 - Next.js App Router (Next 16, React 19, Tailwind 3 + Material Tailwind UI in `src/app/components/ui`). Routes: `/` lobby (create/join room), `/solo` PvE vs bot, `/battle/room` PvP, `/result`.
-- `src/game/` is framework-free logic; React battle state lives in `src/app/` hooks (`useSoloBattle`, `useBattleRoom`). Tuning constants (WORDS_PER_BATTLE, damage, bot configs, Firestore collection names) are in `src/lib/gameConfig.ts`.
+- `src/game/` is framework-free logic; React battle state lives in `src/app/` hooks (`useSoloBattle`, `useBattleRoom`). Tuning constants (WORDS_PER_BATTLE, damage, Firestore collection names) are in `src/lib/gameConfig.ts`. The solo bot — its stat block (`SOLO_BOT`), per-word decisions (moods, think time), and its answer clock (`createBotRunner`) — lives entirely in `src/game/botBrain.ts`.
 - Firebase: anonymous auth gates everything networked. Rooms are realtime Firestore docs (`oxfordwords_rooms/{code}` — the rules let any signed-in user write them), per-user progress is `oxfordwords_progress/{uid}`. If you rename collections, update `firestore.rules` too.
 - `NEXT_PUBLIC_FIREBASE_*` in `.env.local` (see `.env.example`); the config is intentionally client-exposed — security is enforced by `firestore.rules`, not key secrecy.
 

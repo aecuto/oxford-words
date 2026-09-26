@@ -5,7 +5,8 @@ import { useSoloBattle } from "../useSoloBattle";
 import { BattleScreen } from "../components/battle/BattleScreen";
 import { Button } from "../components/ui/Button";
 import { playWordAudio } from "../playWordAudio";
-import { MAX_HP, SOLO_BOT } from "../../lib/gameConfig";
+import { MAX_HP } from "../../lib/gameConfig";
+import { SOLO_BOT } from "../../game/botBrain";
 
 export default function SoloPage() {
   const router = useRouter();

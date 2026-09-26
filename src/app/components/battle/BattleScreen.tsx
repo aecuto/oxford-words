@@ -175,7 +175,8 @@ export function BattleScreen({
         )
       )}
 
-      {/* Waiting indicator */}
+      {/* Waiting indicator — PvP: opponent hasn't answered (answer shown).
+          Solo: the bot is mid-thought, so its deliberation stays visible. */}
       <div className="mb-2 flex flex-wrap items-center justify-center gap-2 min-h-7">
         {view.waitingOpp && (
           <>
@@ -210,6 +211,24 @@ export function BattleScreen({
               </span>
             )}
           </>
+        )}
+        {!view.waitingOpp && view.oppThinking && !ended && (
+          <span className="inline-flex items-center gap-2 animate-popIn text-xs sm:text-sm font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-full px-3 py-1">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75 animate-ping" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
+            </span>
+            {view.oppName} is thinking
+            <span className="inline-flex items-end gap-0.5" aria-hidden>
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="h-1 w-1 rounded-full bg-blue-400 animate-bounce"
+                  style={{ animationDelay: `${i * 150}ms` }}
+                />
+              ))}
+            </span>
+          </span>
         )}
       </div>
     </div>

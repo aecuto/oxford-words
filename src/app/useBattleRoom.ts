@@ -67,6 +67,8 @@ export type BattleView = {
   selected: string | null;
   answerState: AnswerState;
   waitingOpp: boolean;
+  /** Solo only: the bot is mid-thought on the current word. */
+  oppThinking?: boolean;
   turnStartedAt: number | null;
   popups: Popup[];
   outcome: BattleOutcome;

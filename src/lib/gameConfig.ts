@@ -39,34 +39,10 @@ export const DAMAGE = {
 export const CRIT_MULTIPLIER = 2;
 export const STREAK_FOR_CRIT = 3;
 
-export type SoloBotConfig = {
-  name: string;
-  hp: number;
-  hit: number;
-  accuracy: number;
-  minThinkMs: number;
-  maxThinkMs: number;
-};
-
-// One bot for solo mode. It thinks faster than HIGH_MS, so
-// computeHit(thinkMs, streak) lands every answer in the top damage tier with
-// streak crits — it grinds ~6 per word, so the player dies around word 17-18
-// and the only way to win is to out-race it to the KO. The race stays winnable
-// because 0.85 accuracy means ~3 misses per battle and its misses cost it
-// WRONG_ANSWER_HIT (~15 free HP off the KO bar). Answer everything under
-// HIGH_MS and keep the every-4th-answer crit alive to KO it by word 16-17;
-// two player misses blow the tempo and the race is lost. hp 130 keeps the
-// battle long enough that every word still feeds the SRS loop.
-export const SOLO_BOT: SoloBotConfig = {
-  name: "BOT",
-  hp: 130,
-  hit: 5,
-  accuracy: 0.85,
-  minThinkMs: 900,
-  maxThinkMs: 3_400,
-};
-
-export const WRONG_ANSWER_HIT = SOLO_BOT.hit;
+// The price of a wrong answer in every mode: PvP players pay it as a penalty
+// hit, and the solo bot pays the same price on its own misses (SOLO_BOT.hit
+// anchors to this value — the bot itself lives in src/game/botBrain.ts).
+export const WRONG_ANSWER_HIT = 5;
 
 export const COLLECTION = "oxfordwords_rooms";
 export const PROGRESS_COLLECTION = "oxfordwords_progress";

@@ -28,11 +28,11 @@ import {
 } from "../game/roomService";
 import {
   DEFAULT_PLAYER_NAMES,
-  SOLO_BOT,
   TURN_MS,
   WORDS_PER_BATTLE,
   type WordList,
 } from "../lib/gameConfig";
+import { SOLO_BOT } from "../game/botBrain";
 import { describeAuthError, ensureAnonAuth } from "../lib/firebase";
 import type { ClientRoom, OpenRoom, ResultOutcome } from "../game/types";
 

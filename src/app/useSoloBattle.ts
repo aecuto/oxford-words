@@ -2,6 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { computeHit, clampElapsed } from "../game/damage";
+import {
+  createBotRunner,
+  SOLO_BOT,
+  type BotRunner,
+  type PendingBotAnswer,
+} from "../game/botBrain";
 import { loadWordPool, pickBattleWords } from "../game/wordPool";
 import { recordResult } from "../game/progressService";
 import {
@@ -14,7 +20,6 @@ import {
 import type { AnswerState, BattleWord } from "../game/types";
 import {
   MAX_HP,
-  SOLO_BOT,
   TURN_MS,
   WORDS_PER_BATTLE,
   WRONG_ANSWER_HIT,
@@ -22,12 +27,6 @@ import {
 import { loadBattleSummary, saveBattleSummary, type BattleWordDetail } from "../game/battleSummary";
 import { useDamagePopups } from "./useDamagePopups";
 import type { BattleOutcome, BattleView } from "./useBattleRoom";
-
-type PendingBotAnswer = {
-  wordIndex: number;
-  correct: boolean;
-  thinkMs: number;
-};
 
 export function useSoloBattle() {
   const bot = SOLO_BOT;
@@ -43,14 +42,15 @@ export function useSoloBattle() {
   const [myHp, setMyHp] = useState(MAX_HP);
   const [botStreak, setBotStreak] = useState(0);
   const [streak, setStreak] = useState(0);
+  // True while the bot has an unanswered word on its desk — drives the
+  // "thinking" chip so its deliberation is visible, not just a silent timer.
+  const [botThinking, setBotThinking] = useState(false);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [answerState, setAnswerState] = useState<AnswerState>("idle");
   const [outcome, setOutcome] = useState<BattleOutcome>(null);
 
   const timersRef = useRef<number[]>([]);
-  const botTimerRef = useRef<number | null>(null);
-  const pendingBotRef = useRef<PendingBotAnswer | null>(null);
   const outcomeRef = useRef<BattleOutcome>(null);
   // HP lives in refs too: the bot can land damage at any point mid-turn, so
   // outcome decisions must never read a stale state closure.
@@ -64,6 +64,10 @@ export function useSoloBattle() {
   const poolRef = useRef<Awaited<ReturnType<typeof loadWordPool>>>([]);
   const statsRef = useRef<WordStats>({});
   const resultsRef = useRef<WordResult[]>([]);
+  // Brain inputs: the player's recent answer times (pace pressure) and their
+  // live streak — the bot reads both to decide how to play the next word.
+  const playerTimesRef = useRef<number[]>([]);
+  const playerStreakRef = useRef(0);
 
   const { popups, spawnPopup, clearPopups } = useDamagePopups();
 
@@ -75,6 +79,7 @@ export function useSoloBattle() {
   const applyBotAnswer = useCallback(
     (p: PendingBotAnswer) => {
       if (outcomeRef.current) return;
+      setBotThinking(false);
       if (p.correct) {
         const res = computeHit(p.thinkMs, botStreakRef.current);
         if (!res) return;
@@ -98,25 +103,38 @@ export function useSoloBattle() {
     [endBattle, spawnPopup]
   );
 
-  // Pre-roll the bot's answer for the word and land it after its own think
-  // time. If the player resolves the word first, finishWord applies the
-  // pending answer instead — exactly one resolution per word.
+  // The bot's whole clock lives in the runner (botBrain): pending answer,
+  // think timer, lag path. Created lazily on first use — never during render
+  // — and kept for the hook's lifetime; applyBotAnswer is a stable callback
+  // (endBattle/spawnPopup never change identity).
+  const runnerRef = useRef<BotRunner | null>(null);
+  const getRunner = useCallback(() => {
+    if (!runnerRef.current) runnerRef.current = createBotRunner(applyBotAnswer);
+    return runnerRef.current;
+  }, [applyBotAnswer]);
+
+  // Feed the brain the live context (HP race, streaks, player pace, word
+  // length); it decides mood, accuracy and think time and fires the answer
+  // itself. If the player resolves the word first, finishWord hands the
+  // pending answer to the lag path — exactly one resolution per word.
   const scheduleBotTurn = useCallback(
     (forWordIndex: number) => {
-      if (botTimerRef.current != null) window.clearTimeout(botTimerRef.current);
-      const correct = Math.random() < bot.accuracy;
-      const thinkMs = Math.round(
-        bot.minThinkMs + Math.random() * (bot.maxThinkMs - bot.minThinkMs)
-      );
-      pendingBotRef.current = { wordIndex: forWordIndex, correct, thinkMs };
-      botTimerRef.current = window.setTimeout(() => {
-        const p = pendingBotRef.current;
-        if (!p || p.wordIndex !== forWordIndex) return;
-        pendingBotRef.current = null;
-        applyBotAnswer(p);
-      }, thinkMs);
+      const current = wordsRef.current[forWordIndex];
+      const times = playerTimesRef.current;
+      getRunner().schedule(forWordIndex, {
+        config: bot,
+        botHpRatio: botHpRef.current / bot.hp,
+        playerHpRatio: myHpRef.current / MAX_HP,
+        botStreak: botStreakRef.current,
+        playerStreak: playerStreakRef.current,
+        playerPaceMs: times.length
+          ? Math.round(times.reduce((s, t) => s + t, 0) / times.length)
+          : null,
+        wordLength: current?.word.length ?? 6,
+      });
+      setBotThinking(true);
     },
-    [applyBotAnswer, bot.accuracy, bot.minThinkMs, bot.maxThinkMs]
+    [getRunner, bot]
   );
 
   const reset = useCallback(() => {
@@ -124,9 +142,7 @@ export function useSoloBattle() {
     const prevWords = wordsRef.current.map((w) => w.word);
     timersRef.current.forEach((t) => window.clearTimeout(t));
     timersRef.current = [];
-    if (botTimerRef.current != null) window.clearTimeout(botTimerRef.current);
-    botTimerRef.current = null;
-    pendingBotRef.current = null;
+    getRunner().clear();
     outcomeRef.current = null;
     myHpRef.current = MAX_HP;
     botHpRef.current = bot.hp;
@@ -136,6 +152,9 @@ export function useSoloBattle() {
     wordDetailsRef.current = [];
     recordedRef.current = false;
     resultsRef.current = [];
+    playerTimesRef.current = [];
+    playerStreakRef.current = 0;
+    setBotThinking(false);
     clearPopups();
     setWordIndex(0);
     setBotHp(bot.hp);
@@ -160,7 +179,7 @@ export function useSoloBattle() {
       setStartedAt(Date.now());
       scheduleBotTurn(0);
     }
-  }, [clearPopups, scheduleBotTurn, bot.hp]);
+  }, [clearPopups, scheduleBotTurn, getRunner, bot.hp]);
 
   useEffect(() => {
     let alive = true;
@@ -189,9 +208,9 @@ export function useSoloBattle() {
     return () => {
       alive = false;
       timersRef.current.forEach((t) => window.clearTimeout(t));
-      if (botTimerRef.current != null) window.clearTimeout(botTimerRef.current);
+      getRunner().clear();
     };
-  }, [scheduleBotTurn]);
+  }, [scheduleBotTurn, getRunner]);
 
   const finishWord = useCallback(
     (
@@ -232,24 +251,23 @@ export function useSoloBattle() {
         });
       }
 
-      // Resolve the bot's pending answer for this word before settling HP so
-      // the outcome below always sees both players' damage.
-      const pending = pendingBotRef.current;
-      if (pending && pending.wordIndex === wordIndex) {
-        pendingBotRef.current = null;
-        applyBotAnswer(pending);
-      }
+      // The player resolved the word first: the runner kills its natural
+      // timer and lands the in-flight decision a beat later on the bot's own
+      // clock, so the two answers never resolve in the same instant — like
+      // two humans committing at slightly different moments.
+      getRunner().lagResolve(wordIndex);
 
       if (result === "correct") {
         botHpRef.current = Math.max(0, botHpRef.current - dealtDamage);
         setBotHp(botHpRef.current);
         spawnPopup("opp", dealtDamage, crit);
       } else {
-        myHpRef.current = Math.max(0, myHpRef.current - SOLO_BOT.hit);
+        myHpRef.current = Math.max(0, myHpRef.current - WRONG_ANSWER_HIT);
         setMyHp(myHpRef.current);
-        spawnPopup("me", SOLO_BOT.hit, false);
+        spawnPopup("me", WRONG_ANSWER_HIT, false);
       }
       setStreak(nextStreak);
+      playerStreakRef.current = nextStreak;
       if (nextStreak > bestStreakRef.current) bestStreakRef.current = nextStreak;
       if (current) {
         wordDetailsRef.current.push({
@@ -295,7 +313,7 @@ export function useSoloBattle() {
       words,
       wordIndex,
       spawnPopup,
-      applyBotAnswer,
+      getRunner,
       scheduleBotTurn,
       endBattle,
       bot.hp,
@@ -315,6 +333,12 @@ export function useSoloBattle() {
       const correct = !timeout && answer === current.correctAnswer;
 
       setSelected(answer ?? "");
+      // Feed the brain: real picks count toward the player's pace (a timeout
+      // is an absence of an answer, not a slow one).
+      if (!timeout) {
+        playerTimesRef.current.push(elapsed);
+        if (playerTimesRef.current.length > 5) playerTimesRef.current.shift();
+      }
 
       if (correct) {
         const res = computeHit(elapsed, streak);
@@ -386,6 +410,8 @@ export function useSoloBattle() {
       selected,
       answerState,
       waitingOpp: false,
+      // Solo only: the bot's deliberation is visible while its answer is pending.
+      oppThinking: botThinking && outcome === null,
       turnStartedAt: startedAt,
       popups,
       outcome,
@@ -402,6 +428,7 @@ export function useSoloBattle() {
     bot.name,
     selected,
     answerState,
+    botThinking,
     startedAt,
     popups,
     outcome,
