@@ -30,13 +30,16 @@ export const DEFAULT_PLAYER_NAMES = {
 
 export const POPUP_LIFETIME_MS = 1_100;
 
-export const DAMAGE = {
-  high: 6,
-  medium: 5,
-  low: 4,
-} as const;
+// Damage escalates through an unbroken streak — 3 → 4 → 5 → crit 8 — so
+// every 4 consecutive correct answers deal exactly 20 and a perfect 20/20
+// run deals exactly MAX_HP: the KO lands on word 20 no matter the answer
+// speed. A miss drops you back to the 3s, so losing tempo costs real damage
+// on top of the WRONG_ANSWER_HIT penalty. The array must stay CRIT_PERIOD
+// long — its last slot is the crit hit and isCrit indexes it by streak.
+export const DAMAGE = [3, 4, 5, 8] as const;
 
-export const CRIT_MULTIPLIER = 2;
+// The 4th consecutive answer is the crit; STREAK_FOR_CRIT also marks the
+// "charged" state the UI glows on (streak % 4 === 3, see isCritReady).
 export const STREAK_FOR_CRIT = 3;
 
 // The price of a wrong answer in every mode: PvP players pay it as a penalty

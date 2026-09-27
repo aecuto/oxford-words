@@ -1,23 +1,7 @@
 import type { Hit } from "./types";
-import {
-  CRIT_MULTIPLIER,
-  DAMAGE,
-  HIGH_MS,
-  MEDIUM_MS,
-  MAX_HP,
-  STREAK_FOR_CRIT,
-  TURN_MS,
-} from "../lib/gameConfig";
-
-export type DamageTier = "high" | "medium" | "low";
+import { DAMAGE, MAX_HP, STREAK_FOR_CRIT, TURN_MS } from "../lib/gameConfig";
 
 export const CRIT_PERIOD = STREAK_FOR_CRIT + 1;
-
-function tierFor(elapsedMs: number): DamageTier {
-  if (elapsedMs <= HIGH_MS) return "high";
-  if (elapsedMs <= MEDIUM_MS) return "medium";
-  return "low";
-}
 
 function isCrit(streakAfter: number): boolean {
   return streakAfter > 0 && streakAfter % CRIT_PERIOD === 0;
@@ -32,9 +16,13 @@ export function computeHit(
   streakBefore: number,
 ): { damage: number; crit: boolean } | null {
   if (elapsedMs >= TURN_MS) return null;
+  // Escalating streak damage: the streak position picks 3/4/5/8 and the top
+  // of the cycle is the crit, so damage and the crit flag always agree.
+  // Speed only gates whether the hit lands at all (deadline check above) —
+  // any per-speed scaling would drift the KO point off word 20.
   const streakAfter = streakBefore + 1;
   const crit = isCrit(streakAfter);
-  const damage = DAMAGE[tierFor(elapsedMs)] * (crit ? CRIT_MULTIPLIER : 1);
+  const damage = DAMAGE[(streakAfter - 1) % CRIT_PERIOD];
   return { damage, crit };
 }
 

@@ -17,18 +17,15 @@ export type SoloBotConfig = {
 };
 
 // One bot for solo mode. Its think time (shaped by the moods and hesitations
-// below) mostly lands under HIGH_MS, so computeHit(thinkMs, streak) usually
-// deals top-tier damage with streak crits — it grinds ~6 per word, so the
-// player dies around word 17-18 and the only way to win is to out-race it to
-// the KO. The race stays winnable because 0.85 accuracy means ~3 misses per
-// battle and its misses cost it WRONG_ANSWER_HIT (~15 free HP off the KO
-// bar). Answer everything under HIGH_MS and keep the every-4th-answer crit
-// alive to KO it by word 16-17; two player misses blow the tempo and the
-// race is lost. hp 130 keeps the battle long enough that every word still
-// feeds the SRS loop.
+// below) mostly lands under HIGH_MS — speed doesn't change its hit anymore,
+// but it keeps its streak (and so the 3→4→5→crit 8 escalation) alive. hp 100
+// mirrors MAX_HP: a flawless bot deals exactly MAX_HP by word 20, while its
+// ~3 misses at 0.85 accuracy (−15 self-damage plus restarting the escalation
+// at 3) let a perfect player land the KO around word 18-20. Anything
+// sloppier and the deck runs out — the HP ratio decides.
 export const SOLO_BOT: SoloBotConfig = {
   name: "BOT",
-  hp: 130,
+  hp: 100,
   // Its misses cost it exactly what any player's miss costs.
   hit: WRONG_ANSWER_HIT,
   accuracy: 0.85,
