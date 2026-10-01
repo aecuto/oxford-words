@@ -17,12 +17,13 @@ export type SoloBotConfig = {
 };
 
 // One bot for solo mode. Its think time (shaped by the moods and hesitations
-// below) mostly lands under HIGH_MS — speed doesn't change its hit anymore,
-// but it keeps its streak (and so the 3→4→5→crit 8 escalation) alive. hp 100
-// mirrors MAX_HP: a flawless bot deals exactly MAX_HP by word 20, while its
-// ~3 misses at 0.85 accuracy (−15 self-damage plus restarting the escalation
-// at 3) let a perfect player land the KO around word 18-20. Anything
-// sloppier and the deck runs out — the HP ratio decides.
+// below) mostly lands in the 1.25x speed tier, with desperate rushes dipping
+// into 1.5x — the same speed-scaled damage a fast player deals (computeHit).
+// The think time also keeps its streak (and so the 3→4→5→crit 8 escalation)
+// alive. hp 100 mirrors MAX_HP: at 0.85 accuracy its ~3 misses (−15
+// self-damage plus restarting the escalation at 3) let a perfect player land
+// the KO around word 14-18, and anything sloppier than that means the deck
+// runs out — the HP ratio decides.
 export const SOLO_BOT: SoloBotConfig = {
   name: "BOT",
   hp: 100,

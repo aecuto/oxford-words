@@ -309,6 +309,46 @@ async function main() {
     );
   });
 
+  // Review draw is least-recently-seen first: after a battle deals its cohort,
+  // those words are the newest of the queue, so the next battles cycle the
+  // still-undone due words before re-dealing any of them. The old uniform
+  // random draw clumped the same words into back-to-back battles instead.
+  check("review draw cycles the due queue before repeating a word", () => {
+    const now = Date.now();
+    const cohort = pool.slice(100, 140); // 40 due retry words
+    const stats: WordStats = {};
+    cohort.forEach((w) => {
+      stats[w.word] = { seen: 1, correct: 0, wrong: 1, lastSeenAt: now - 3 * DAY_MS, ivl: 0, mark: "retry" };
+    });
+    const dealt = new Map<string, number>();
+    const deal = (prev: string[]) => {
+      const words = pickBattleWords(pool, WORDS_PER_BATTLE, stats, prev);
+      const names: string[] = [];
+      for (const w of words) {
+        names.push(w.word);
+        if (!cohort.some((c) => c.word === w.word)) continue;
+        dealt.set(w.word, (dealt.get(w.word) ?? 0) + 1);
+        // Dealt words are saved as just-answered, i.e. the newest of the queue.
+        stats[w.word] = { ...stats[w.word], lastSeenAt: now };
+      }
+      return names;
+    };
+    const first = deal([]);
+    assert.ok(
+      first.length >= 10,
+      "due review words were not dealt despite an all-retry cohort",
+    );
+    const second = deal(first);
+    const third = deal(second);
+    assert.ok(
+      third.some((w) => cohort.some((c) => c.word === w)),
+      "the queue had untouched due words but battle 3 dealt none",
+    );
+    for (const [word, n] of dealt) {
+      assert.equal(n, 1, `"${word}" was re-dealt before the due queue cycled`);
+    }
+  });
+
   // Fallback rule: Pool A dry (everything already studied) → draw 100% old;
   // and with empty stats (Pools B/C dry) → draw 100% new.
   check("empty-pool fallbacks fill the battle either way", () => {

@@ -1,6 +1,11 @@
-import { sampleSize, shuffle, uniq } from "lodash";
+import { sampleSize, shuffle, sortBy, uniq } from "lodash";
 import type { BattleWord, Word } from "./types";
-import { ANSWER_OPTIONS, DAY_MS, WORDS_PER_BATTLE, type WordList } from "../lib/gameConfig";
+import {
+  ANSWER_OPTIONS,
+  DAY_MS,
+  WORDS_PER_BATTLE,
+  type WordList,
+} from "../lib/gameConfig";
 import { loadWordList } from "./wordList";
 import {
   isDue,
@@ -49,11 +54,16 @@ export function mergeWordLists(
 // 2. Battles deal a repeating 1 new : 2 old cycle, so reviews always outweigh
 //    fresh words 2:1 — that ratio replaces the old 70% review cap. Empty-pool
 //    fallbacks: Pool A dry → draw everything from B/C; B/C dry → all new.
-// 3. Old slots draw due cards from one weighted bag: Pool B counts double
-//    Pool C. Retry words (ivl 0) are always due and skip the 30-min session
-//    cooldown — active review means they can come straight back in the next
-//    battle, even a minute later. With nothing due, the slot falls back to a
-//    purely random old word at the same 2x weighting.
+// 3. Old slots draw due cards from one weighted pair: Pool B counts double
+//    Pool C via a fixed B,B,C slot cycle (deterministic, like the 1:2 cycle).
+//    Within each pool the LEAST-RECENTLY-SEEN word is drawn first, so a word
+//    only returns after the rest of its due queue has cycled — a uniform
+//    random draw instead clumps: with a small learning pool the same words
+//    re-deal every battle or two while most of the queue starves. Retry
+//    words (ivl 0) are always due and skip the 30-min session cooldown —
+//    active review means they stay eligible, just oldest-first. With nothing
+//    due, the slot falls back to the least-recently-seen old word at the
+//    same 2x weighting.
 // 4. The 30-min session cooldown holds only mastered (14-day) reviews out of
 //    draws. The caller's exclude list (the previous battle's set) still wins
 //    over everything, so a retry word returns one battle later instead of
@@ -71,23 +81,41 @@ function isImmediate(s: WordStat): boolean {
 
 // Old-slot candidate check: due first, with the session cooldown applied to
 // everything except immediate (retry) cards.
-function isReviewable(s: WordStat, now: number, cooldownUntil: number): boolean {
+function isReviewable(
+  s: WordStat,
+  now: number,
+  cooldownUntil: number,
+): boolean {
   if (!isDue(s, now)) return false;
   return isImmediate(s) || s.lastSeenAt < cooldownUntil;
 }
 
-// Pool B (learning) weighs 2x Pool C (mastered): each B word enters the draw
-// bag twice. Returns an untouched word from either list, or undefined.
-function drawWeighted(
+// Pool B (learning) weighs 2x Pool C (mastered): a fixed B,B,C slot cycle —
+// deterministic like the 1:2 new:old cycle, so the share holds exactly at
+// 2:1 when both pools are plentiful. Each pool is an oldest-first queue;
+// when the wanted pool runs dry the other takes the slot.
+function drawOldPair(
   poolB: Word[],
   poolC: Word[],
   taken: Set<string>,
+  oldSlot: number,
 ): Word | undefined {
-  const bag: Word[] = [];
-  for (const w of poolB) if (!taken.has(w.word)) bag.push(w, w);
-  for (const w of poolC) if (!taken.has(w.word)) bag.push(w);
-  if (bag.length === 0) return undefined;
-  return bag[Math.floor(Math.random() * bag.length)];
+  const first = oldSlot % 3 === 2 ? poolC : poolB;
+  const second = oldSlot % 3 === 2 ? poolB : poolC;
+  return drawOldest(first, taken) ?? drawOldest(second, taken);
+}
+
+// First not-yet-taken word of an oldest-first queue, or undefined.
+function drawOldest(queue: Word[], taken: Set<string>): Word | undefined {
+  const w = queue.find((x) => !taken.has(x.word));
+  if (w) taken.add(w.word);
+  return w;
+}
+
+// Shuffle first so equal lastSeenAt (one battle's cohort shares a timestamp)
+// tie-break randomly, then stable-sort oldest-first.
+function byOldest(pool: Word[], stats: WordStats): Word[] {
+  return sortBy(shuffle(pool), (w) => stats[w.word]?.lastSeenAt ?? 0);
 }
 
 // The source data repeats a headword once per part of speech (e.g. "about" as
@@ -99,7 +127,11 @@ export function dedupeWords(words: Word[]): Word[] {
 }
 
 // Interleaved draw shared by PvP and PvE (rules at the top of this file).
-function selectWords(candidates: Word[], count: number, stats: WordStats): Word[] {
+function selectWords(
+  candidates: Word[],
+  count: number,
+  stats: WordStats,
+): Word[] {
   const now = Date.now();
   const cooldownUntil = now - RECENT_COOLDOWN_MS;
 
@@ -121,28 +153,26 @@ function selectWords(candidates: Word[], count: number, stats: WordStats): Word[
     return w;
   };
 
+  const learningQ = byOldest(learning, stats);
+  const masteredQ = byOldest(mastered, stats);
+  let oldSlot = 0;
+
   const drawOld = (): Word | undefined => {
-    const dueB: Word[] = [];
-    const dueC: Word[] = [];
-    for (const w of learning) {
-      const s = stats[w.word];
-      if (!s || taken.has(w.word) || !isReviewable(s, now, cooldownUntil)) continue;
-      // Every retry word has ivl 0, so all reviewable Pool B cards are
-      // immediate — there is no separate due queue to jump anymore.
-      dueB.push(w);
-    }
-    for (const w of mastered) {
-      const s = stats[w.word];
-      if (s && !taken.has(w.word) && isReviewable(s, now, cooldownUntil)) {
-        dueC.push(w);
-      }
-    }
-    // Due B/C at 2:1, then a purely random old word as fallback.
-    const picked =
-      drawWeighted(dueB, dueC, taken) ??
-      drawWeighted(learning, mastered, taken);
-    if (picked) taken.add(picked.word);
-    return picked;
+    // Due subsets keep their queues' oldest-first order.
+    const dueB = learningQ.filter(
+      (w) =>
+        !taken.has(w.word) && isReviewable(stats[w.word], now, cooldownUntil),
+    );
+    const dueC = masteredQ.filter(
+      (w) =>
+        !taken.has(w.word) && isReviewable(stats[w.word], now, cooldownUntil),
+    );
+    // Due B/C at 2:1, least-recently-seen first; with nothing due, the same
+    // cycle falls back to the least-recently-seen old word of either pool.
+    return (
+      drawOldPair(dueB, dueC, taken, oldSlot++) ??
+      drawOldPair(learningQ, masteredQ, taken, oldSlot++)
+    );
   };
 
   const freshQueue = shuffle(fresh);
@@ -151,8 +181,8 @@ function selectWords(candidates: Word[], count: number, stats: WordStats): Word[
     // Slots 1/2/3 of each cycle: one new, two old (0-indexed: i % 3 === 0).
     const w =
       i % 3 === 0
-        ? drawNew(freshQueue) ?? drawOld() // Pool A dry → 100% old
-        : drawOld() ?? drawNew(freshQueue); // Pools B/C dry → 100% new
+        ? (drawNew(freshQueue) ?? drawOld()) // Pool A dry → 100% old
+        : (drawOld() ?? drawNew(freshQueue)); // Pools B/C dry → 100% new
     if (!w) break;
     picked.push(w);
   }
@@ -200,10 +230,9 @@ export function pickBattleWords(
   if (picked.length < count) {
     const chosen = new Set(picked.map((w) => w.word));
     picked.push(
-      ...shuffle(all.filter((w) => recent.has(w.word) && !chosen.has(w.word))).slice(
-        0,
-        count - picked.length
-      )
+      ...shuffle(
+        all.filter((w) => recent.has(w.word) && !chosen.has(w.word)),
+      ).slice(0, count - picked.length),
     );
   }
   return toBattleWords(picked);
