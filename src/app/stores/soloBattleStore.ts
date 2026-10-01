@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { computeHit, clampElapsed } from "../../game/damage";
+import { computeHit, clampElapsed, streakBreakPenalty } from "../../game/damage";
 import {
   createBotRunner,
   SOLO_BOT,
@@ -21,7 +21,6 @@ import {
   POPUP_LIFETIME_MS,
   TURN_MS,
   WORDS_PER_BATTLE,
-  WRONG_ANSWER_HIT,
 } from "../../lib/gameConfig";
 import {
   loadBattleSummary,
@@ -54,6 +53,9 @@ type SoloBattleState = {
   // True while the bot has an unanswered word on its desk — drives the
   // "thinking" chip so its deliberation is visible, not just a silent timer.
   botThinking: boolean;
+  // Who committed to the current word first ("me"/"opp") — that side's
+  // correct hit earns the race bonus (computeHit). Null until someone does.
+  firstAnsweredBy: "me" | "opp" | null;
   startedAt: number | null;
   selected: string | null;
   answerState: AnswerState;
@@ -86,6 +88,7 @@ const freshSoloBattle = (
   streak: 0,
   bestStreak: 0,
   botThinking: false,
+  firstAnsweredBy: null,
   startedAt,
   selected: null,
   answerState: "idle",
@@ -220,11 +223,13 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
       const state = get();
       // Once decided the battle is frozen: late lag answers can't touch it.
       if (state.outcome) return;
+      // The bot fired while the player hadn't committed: it wins the race.
+      const firstAnswer = state.firstAnsweredBy == null;
       if (answer.correct) {
         // computeHit can only return null past the turn deadline, which
         // the bot's think time never reaches — guarded anyway to mirror
         // damage.ts.
-        const hit = computeHit(answer.thinkMs, state.botStreak);
+        const hit = computeHit(answer.thinkMs, state.botStreak, firstAnswer);
         if (!hit) {
           commit({ botThinking: false });
           return;
@@ -233,17 +238,20 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
         const myHp = Math.max(0, state.myHp - hit.damage);
         commit({
           botThinking: false,
+          firstAnsweredBy: firstAnswer ? "opp" : state.firstAnsweredBy,
           botStreak: state.botStreak + 1,
           myHp,
           outcome: myHp <= 0 ? "lose" : null,
         });
       } else {
-        // The bot pays for its own misses — same price the player pays —
-        // so its ~15 HP of self-damage per battle is part of the KO race.
-        spawnPopup("opp", WRONG_ANSWER_HIT, false);
-        const botHp = Math.max(0, state.botHp - WRONG_ANSWER_HIT);
+        // The bot pays for its own misses — the streak it breaks feeds the
+        // player a bigger penalty, same as a player miss does.
+        const penalty = streakBreakPenalty(state.botStreak);
+        spawnPopup("opp", penalty, false);
+        const botHp = Math.max(0, state.botHp - penalty);
         commit({
           botThinking: false,
+          firstAnsweredBy: firstAnswer ? "opp" : state.firstAnsweredBy,
           botStreak: 0,
           botHp,
           outcome: botHp <= 0 ? "win" : null,
@@ -262,6 +270,9 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
       );
       const timeout = answer == null;
       const correct = !timeout && answer === current.correctAnswer;
+      // First real commit on this word owns the race bonus (a timeout just
+      // forfeits the word and leaves the race open for the bot).
+      const claimedFirst = state.firstAnsweredBy == null && !timeout;
       // Response time + timeout flag drive the 2-option SRS grade in
       // wordProgress: instant (<2s) masters the word, everything else is a
       // retry that keeps it in Pool B for active review.
@@ -275,18 +286,21 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
 
       let dealt = 0;
       if (correct) {
-        const hit = computeHit(elapsed, state.streak);
+        const hit = computeHit(elapsed, state.streak, claimedFirst);
         if (hit) {
           dealt = hit.damage;
           spawnPopup("opp", hit.damage, hit.crit);
         }
       } else {
-        spawnPopup("me", WRONG_ANSWER_HIT, false);
+        // Breaking a correct streak with a miss feeds the bot a bigger
+        // penalty hit.
+        const penalty = streakBreakPenalty(state.streak);
+        spawnPopup("me", penalty, false);
       }
       const botHp = correct ? Math.max(0, state.botHp - dealt) : state.botHp;
       const myHp = correct
         ? state.myHp
-        : Math.max(0, state.myHp - WRONG_ANSWER_HIT);
+        : Math.max(0, state.myHp - streakBreakPenalty(state.streak));
 
       const wordResults = [...state.wordResults];
       wordResults[state.wordIndex] = correct;
@@ -296,6 +310,7 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
       commit({
         selected: answer ?? "",
         answerState: correct ? "correct" : timeout ? "timeout" : "wrong",
+        firstAnsweredBy: claimedFirst ? "me" : state.firstAnsweredBy,
         playerTimes,
         streak,
         bestStreak: Math.max(state.bestStreak, streak),
@@ -347,6 +362,7 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
         wordIndex: state.wordIndex + 1,
         selected: null,
         answerState: "idle",
+        firstAnsweredBy: null,
         startedAt: now,
       });
     };

@@ -31,24 +31,24 @@ export const DEFAULT_PLAYER_NAMES = {
 export const POPUP_LIFETIME_MS = 1_100;
 
 // Damage escalates through an unbroken streak — 3 → 4 → 5 → crit 8 — so
-// every 4 consecutive correct answers deal exactly 20 base damage. On top of
-// the base, computeHit scales each hit by the answer's speed tier
-// (DAMAGE_SPEED_MULTIPLIERS), so fast answers land harder and the KO point
-// moves with speed: a perfect instant run KOs well before word 20, a slow
-// one needs all 20. The array must stay CRIT_PERIOD long — its last slot is
-// the crit hit and isCrit indexes it by streak.
+// every 4 consecutive correct answers deal exactly 20. Two race bonuses sit
+// on top (see computeHit): answering a word before the opponent adds
+// FIRST_ANSWER_BONUS_DAMAGE, and a miss that breaks a correct streak feeds
+// the opponent STREAK_BREAK_BONUS per streak word. A miss drops you back to
+// the 3s, so losing tempo costs real damage on top of the wrong-answer
+// penalty. The array must stay CRIT_PERIOD long — its last slot is the crit
+// hit and isCrit indexes it by streak.
 export const DAMAGE = [3, 4, 5, 8] as const;
 
-// Speed tiers for damage (computeHit), multiplied onto the streak base.
-// Bands reuse the SRS instant mark (ANSWER_INSTANT_MS, 2s) and the TimerBar
-// zones (HIGH_MS 4s / MEDIUM_MS 7s), so bar color, SRS grade and damage
-// tier tell one story about the same answer; stalling in the red pays 25%.
-export const DAMAGE_SPEED_MULTIPLIERS = {
-  instant: 1.5,
-  fast: 1.25,
-  normal: 1,
-  slow: 0.75,
-} as const;
+// Bonus damage for the first player to answer a word (solo: whoever resolves
+// it first, player or bot) — added to their correct hit.
+export const FIRST_ANSWER_BONUS_DAMAGE = 3;
+
+// A wrong answer that breaks a correct streak feeds the opponent a penalty
+// hit of WRONG_ANSWER_HIT + STREAK_BREAK_BONUS × broken streak words, capped
+// by STREAK_BREAK_BONUS_CAP — breaking a long run costs real tempo.
+export const STREAK_BREAK_BONUS = 2;
+export const STREAK_BREAK_BONUS_CAP = 5;
 
 // The 4th consecutive answer is the crit; STREAK_FOR_CRIT also marks the
 // "charged" state the UI glows on (streak % 4 === 3, see isCritReady).

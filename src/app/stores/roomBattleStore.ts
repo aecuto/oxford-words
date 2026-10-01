@@ -1,7 +1,12 @@
 "use client";
 
 import { create } from "zustand";
-import { computeHit, clampElapsed, deriveHp } from "../../game/damage";
+import {
+  computeHit,
+  clampElapsed,
+  deriveHp,
+  streakBreakPenalty,
+} from "../../game/damage";
 import {
   advanceWord,
   endGame,
@@ -27,7 +32,6 @@ import {
   TURN_GRACE_MS,
   TURN_MS,
   WORDS_PER_BATTLE,
-  WRONG_ANSWER_HIT,
 } from "../../lib/gameConfig";
 import { describeAuthError, ensureAnonAuth } from "../../lib/firebase";
 import {
@@ -156,10 +160,10 @@ function roomOutcome(room: ClientRoom, uid: string): BattleOutcome {
   return room.winner === "draw" ? "draw" : room.winner === key ? "win" : "lose";
 }
 
-function penaltyHit(wordIndex: number): Hit {
+function penaltyHit(wordIndex: number, brokenStreak: number): Hit {
   return {
     wordIndex,
-    damage: WRONG_ANSWER_HIT,
+    damage: streakBreakPenalty(brokenStreak),
     crit: false,
     at: Date.now(),
   };
@@ -406,10 +410,15 @@ export const useRoomBattleStore = create<
     const streak = correct ? my.streak + 1 : 0;
     noteBestStreak(streak);
 
+    // First answer on this word earns the race bonus — the opponent's
+    // lastAnswer not covering the current word means I committed first.
+    const oppKey: SlotKey = key === "p1" ? "p2" : "p1";
+    const firstAnswer = r.players[oppKey]?.lastAnswer?.wordIndex !== r.wordIndex;
+
     let hit: Hit | null = null;
     let oppHit: Hit | null = null;
     if (correct) {
-      const res = computeHit(elapsed, my.streak);
+      const res = computeHit(elapsed, my.streak, firstAnswer);
       if (res) {
         hit = {
           wordIndex: r.wordIndex,
@@ -419,7 +428,8 @@ export const useRoomBattleStore = create<
         };
       }
     } else {
-      oppHit = penaltyHit(r.wordIndex);
+      // Breaking my correct streak feeds the opponent a bigger penalty hit.
+      oppHit = penaltyHit(r.wordIndex, my.streak);
     }
 
     const lastAnswer: LastAnswer = {
@@ -631,7 +641,7 @@ export const useRoomBattleStore = create<
           },
           null,
           0,
-          penaltyHit(cur.wordIndex)
+          penaltyHit(cur.wordIndex, my.streak)
         )
       );
     },

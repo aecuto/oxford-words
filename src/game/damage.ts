@@ -1,13 +1,13 @@
 import type { Hit } from "./types";
 import {
-  ANSWER_INSTANT_MS,
   DAMAGE,
-  DAMAGE_SPEED_MULTIPLIERS,
-  HIGH_MS,
+  FIRST_ANSWER_BONUS_DAMAGE,
   MAX_HP,
-  MEDIUM_MS,
+  STREAK_BREAK_BONUS,
+  STREAK_BREAK_BONUS_CAP,
   STREAK_FOR_CRIT,
   TURN_MS,
+  WRONG_ANSWER_HIT,
 } from "../lib/gameConfig";
 
 export const CRIT_PERIOD = STREAK_FOR_CRIT + 1;
@@ -20,31 +20,29 @@ export function isCritReady(streak: number): boolean {
   return streak > 0 && streak % CRIT_PERIOD === STREAK_FOR_CRIT;
 }
 
-// Speed tier of a hit: under 2s (the SRS instant mark) deals 1.5x, under 4s
-// (TimerBar green) 1.25x, under 7s (amber) the base 1x, and stalling in the
-// red only 0.75x — ask fast, hit hard.
-export function speedMultiplier(elapsedMs: number): number {
-  if (elapsedMs < ANSWER_INSTANT_MS) return DAMAGE_SPEED_MULTIPLIERS.instant;
-  if (elapsedMs < HIGH_MS) return DAMAGE_SPEED_MULTIPLIERS.fast;
-  if (elapsedMs < MEDIUM_MS) return DAMAGE_SPEED_MULTIPLIERS.normal;
-  return DAMAGE_SPEED_MULTIPLIERS.slow;
-}
-
 export function computeHit(
   elapsedMs: number,
   streakBefore: number,
+  firstAnswer = false,
 ): { damage: number; crit: boolean } | null {
   if (elapsedMs >= TURN_MS) return null;
   // Escalating streak damage: the streak position picks 3/4/5/8 and the top
-  // of the cycle is the crit, so damage and the crit flag always agree. The
-  // speed tier then scales the base, so a fast crit hits far harder than a
-  // slow one — and the KO point moves with speed instead of pinning to
-  // word 20.
+  // of the cycle is the crit, so damage and the crit flag always agree.
+  // Whoever answered the word first adds the race bonus to their hit.
   const streakAfter = streakBefore + 1;
   const crit = isCrit(streakAfter);
-  const base = DAMAGE[(streakAfter - 1) % CRIT_PERIOD];
-  const damage = Math.max(1, Math.round(base * speedMultiplier(elapsedMs)));
+  const damage =
+    DAMAGE[(streakAfter - 1) % CRIT_PERIOD] +
+    (firstAnswer ? FIRST_ANSWER_BONUS_DAMAGE : 0);
   return { damage, crit };
+}
+
+// Penalty hit a wrong answer feeds the opponent: the base price plus a bonus
+// scaled by the correct streak the miss breaks — wrong after a long run
+// hurts most.
+export function streakBreakPenalty(brokenStreak: number): number {
+  const capped = Math.min(Math.max(brokenStreak, 0), STREAK_BREAK_BONUS_CAP);
+  return WRONG_ANSWER_HIT + capped * STREAK_BREAK_BONUS;
 }
 
 export function deriveHp(incomingHits: Hit[]): number {
