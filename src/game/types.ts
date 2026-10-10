@@ -15,13 +15,6 @@ export type BattleWord = {
   options: string[];
 };
 
-export type Hit = {
-  wordIndex: number;
-  damage: number;
-  crit: boolean;
-  at: number;
-};
-
 export type LastAnswer = {
   wordIndex: number;
   answer: string;
@@ -31,12 +24,26 @@ export type LastAnswer = {
 
 export type AnswerState = "idle" | "correct" | "wrong" | "timeout";
 
+// A board cell is empty or holds one player's mark ("X" = p1, "O" = p2).
+export type Cell = "" | "X" | "O";
+
+// One placement on the Infinite Tic-Tac-Toe board, in chronological order —
+// the per-slot prefix of this list is what makes "oldest mark fades" exact.
+export type Move = {
+  slot: SlotKey;
+  cell: number;
+  wordIndex: number;
+};
+
 export type PlayerSlot = {
   uid: string;
   name: string;
-  streak: number;
-  hits: Hit[];
   lastAnswer: LastAnswer | null;
+  // Indices of words this player answered correctly / incorrectly — the
+  // per-word history hits[] used to provide, now that a miss leaves no mark.
+  // correctIdx also decides a judge-by-count finish when the words run out.
+  correctIdx: number[];
+  wrongIdx: number[];
   words: BattleWord[];
 };
 
@@ -53,6 +60,8 @@ export type RoomDoc = {
   words: BattleWord[];
   wordIndex: number;
   turnStartedAt: Timestamp | null;
+  board: Cell[];
+  moves: Move[];
   players: Record<SlotKey, PlayerSlot | null>;
   winner: Winner | null;
   rematchReady?: Record<SlotKey, boolean>;
@@ -69,11 +78,4 @@ export type OpenRoom = {
 
 export type ClientRoom = Omit<RoomDoc, "turnStartedAt"> & {
   turnStartedAt: number | null;
-};
-
-export type Popup = {
-  id: number;
-  side: "me" | "opp";
-  damage: number;
-  crit: boolean;
 };

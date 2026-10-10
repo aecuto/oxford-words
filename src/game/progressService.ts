@@ -16,7 +16,6 @@ type ProgressDoc = {
   wins: number;
   losses: number;
   draws: number;
-  bestStreak: number;
   lastPlayedAt: Timestamp | null;
 };
 
@@ -39,27 +38,21 @@ export async function fetchProgress(uid: string): Promise<Progress | null> {
     wins: data.wins ?? 0,
     losses: data.losses ?? 0,
     draws: data.draws ?? 0,
-    bestStreak: data.bestStreak ?? 0,
     lastPlayedAtMs: tsToMillis(data.lastPlayedAt, null),
   };
 }
 
-export async function recordResult(
-  outcome: ResultOutcome,
-  streak: number
-): Promise<void> {
+export async function recordResult(outcome: ResultOutcome): Promise<void> {
   const uid = await ensureAnonAuth();
   const ref = progressRef(uid);
   await runTransaction(ref.firestore, async (tx) => {
     const snap = await tx.get(ref);
-    const bestStreak = Math.max(snap.data()?.bestStreak ?? 0, streak);
     if (snap.exists()) {
       tx.update(ref, {
         games: increment(1),
         wins: increment(outcome === "win" ? 1 : 0),
         losses: increment(outcome === "lose" ? 1 : 0),
         draws: increment(outcome === "draw" ? 1 : 0),
-        bestStreak,
         lastPlayedAt: serverTimestamp(),
       });
     } else {
@@ -68,7 +61,6 @@ export async function recordResult(
         wins: outcome === "win" ? 1 : 0,
         losses: outcome === "lose" ? 1 : 0,
         draws: outcome === "draw" ? 1 : 0,
-        bestStreak,
         lastPlayedAt: serverTimestamp(),
       });
     }

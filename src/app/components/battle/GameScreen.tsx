@@ -4,41 +4,32 @@ import { useEffect, useRef, useState } from "react";
 import { cx } from "@emotion/css";
 import { FlagIcon } from "@heroicons/react/24/solid";
 import type { BattleView } from "../../stores/roomBattleStore";
-import { isCritReady } from "../../../game/damage";
 import { TURN_MS } from "../../../lib/gameConfig";
 import { playSfx, preloadSfx } from "../../../lib/sfx";
 import { preloadWordAudio } from "../../playWordAudio";
 import { AnswerGrid } from "./AnswerGrid";
-import { DamagePopup } from "./DamagePopup";
-import { FlashOverlay, useCritEffects } from "./EffectLayer";
-import { HpBar } from "./HpBar";
 import { Logo } from "../Logo";
+import { TicTacToeBoard } from "./TicTacToeBoard";
 import { TimerBar } from "./TimerBar";
 import { WordPlayBox } from "./WordPlayBox";
 import { WordProgress } from "./WordProgress";
 
-type BattleScreenProps = {
+type GameScreenProps = {
   view: BattleView;
-  myMaxHp: number;
-  oppMaxHp: number;
   onAnswer: (answer: string | null) => void;
+  onPlace: (cell: number) => void;
   onPlayWord: () => void;
-  onExit: () => void;
   onViewResult: () => void;
 };
 
-export function BattleScreen({
+export function GameScreen({
   view,
-  myMaxHp,
-  oppMaxHp,
   onAnswer,
+  onPlace,
   onPlayWord,
-  onExit,
   onViewResult,
-}: BattleScreenProps) {
-  const { shake, flash } = useCritEffects(view.popups);
+}: GameScreenProps) {
   const ended = view.outcome !== null;
-  const critCharged = isCritReady(view.myStreak);
 
   const [playedWordNumber, setPlayedWordNumber] = useState<number | null>(null);
   const soundUnlocked = playedWordNumber === view.wordNumber;
@@ -53,6 +44,20 @@ export function BattleScreen({
     onViewResult();
   };
 
+  // One chime per placement, whichever side placed it.
+  const seenMoves = useRef<number>(-1);
+  useEffect(() => {
+    const count = view.moves.length;
+    if (seenMoves.current === -1) {
+      seenMoves.current = count;
+      return;
+    }
+    if (count > seenMoves.current) {
+      seenMoves.current = count;
+      playSfx("place");
+    }
+  }, [view.moves.length]);
+
   const viewResultButton = (
     <button
       onClick={handleViewResult}
@@ -63,17 +68,7 @@ export function BattleScreen({
     </button>
   );
 
-  const seenPopups = useRef<Set<number>>(new Set());
-  useEffect(() => {
-    for (const p of view.popups) {
-      if (seenPopups.current.has(p.id)) continue;
-      seenPopups.current.add(p.id);
-      if (p.side === "opp") playSfx(p.crit ? "crit" : "hit");
-      else playSfx("hurt");
-    }
-  }, [view.popups]);
-
-  // Preload audio off the interaction path: battle SFX once on mount, and the
+  // Preload audio off the interaction path: game SFX once on mount, and the
   // current word's pronunciation whenever the word changes.
   useEffect(() => {
     preloadSfx();
@@ -84,14 +79,7 @@ export function BattleScreen({
   }, [view.word?.pronounceURL]);
 
   return (
-    <div
-      className={cx(
-        "relative mx-auto flex min-h-screen w-full max-w-screen-md flex-col p-4 sm:p-6 select-none",
-        shake && "animate-shake",
-      )}
-    >
-      <FlashOverlay active={flash} />
-
+    <div className="relative mx-auto flex min-h-screen w-full max-w-screen-md flex-col p-4 sm:p-6 select-none">
       <Logo size="sm" className="mb-2" />
 
       {/* Word HUD — top */}
@@ -107,49 +95,49 @@ export function BattleScreen({
         />
       </div>
 
-      {/* Timer — stopped/hidden once the battle has ended */}
+      {/* Timer — stopped/hidden once the game has ended */}
       {!ended && (
         <div className="mb-2">
           <TimerBar startedAt={view.turnStartedAt} totalMs={TURN_MS} />
         </div>
       )}
 
-      {/* HP bars — top HUD, full width so both bars stay readable on phones */}
-      <div className="relative flex w-full items-start gap-1.5 sm:gap-3 mt-2 mb-3">
-        <div className="relative flex-1 min-w-0">
-          <HpBar
-            name={view.myName}
-            hp={view.myHp}
-            max={myMaxHp}
-            streak={view.myStreak}
-          />
-          {view.popups
-            .filter((p) => p.side === "me")
-            .map((p) => (
-              <DamagePopup key={p.id} popup={p} below />
-            ))}
+      {/* Board — the Infinite Tic-Tac-Toe scoreline both players play on */}
+      <div className="mt-2 mb-3">
+        <div className="flex items-center justify-between gap-2 mb-1.5 px-1 max-w-[300px] sm:max-w-[340px] mx-auto">
+          <span className="flex items-center gap-1.5 min-w-0 text-sm font-bold text-gray-700 dark:text-gray-200 truncate">
+            <span className="font-black text-blue-500 dark:text-blue-400">
+              {view.myMark}
+            </span>
+            <span className="truncate">{view.myName}</span>
+          </span>
+          <span className="shrink-0 text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">
+            3 in a row
+          </span>
+          <span className="flex items-center gap-1.5 min-w-0 text-sm font-bold text-gray-700 dark:text-gray-200 truncate justify-end">
+            <span className="truncate">{view.oppName}</span>
+            <span className="font-black text-rose-500 dark:text-rose-400">
+              {view.oppMark}
+            </span>
+          </span>
         </div>
-        <span className="font-black text-sm sm:text-2xl text-gray-400 dark:text-gray-500 pt-1.5 sm:pt-4 shrink-0">
-          VS
-        </span>
-        <div className="relative flex-1 min-w-0">
-          <HpBar
-            name={view.oppName}
-            hp={view.oppHp}
-            max={oppMaxHp}
-            streak={view.oppStreak}
-            flip
-          />
-          {view.popups
-            .filter((p) => p.side === "opp")
-            .map((p) => (
-              <DamagePopup key={p.id} popup={p} flip below />
-            ))}
-        </div>
+        <TicTacToeBoard
+          board={view.board}
+          myMark={view.myMark}
+          myNextFade={view.myNextFade}
+          oppNextFade={view.oppNextFade}
+          canPlace={view.pendingPlacement}
+          onPlace={onPlace}
+        />
+        {view.pendingPlacement && (
+          <p className="animate-popIn mt-2 text-center text-xs sm:text-sm font-bold text-blue-600 dark:text-blue-400">
+            Correct! Tap a cell to place your {view.myMark}
+          </p>
+        )}
       </div>
 
       {/* Word box — tap to play the sound; the word and answers appear inside.
-          Once the battle ends, it is replaced by the view result box. */}
+          Once the game ends, it is replaced by the view result box. */}
       {ended ? (
         <div className="flex justify-center">{viewResultButton}</div>
       ) : (
@@ -165,7 +153,6 @@ export function BattleScreen({
                 selected={view.selected}
                 answerState={view.answerState}
                 disabled={view.answerState !== "idle"}
-                crit={critCharged && view.answerState === "idle"}
                 onSelect={(answer) => {
                   onAnswer(answer);
                 }}

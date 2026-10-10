@@ -9,7 +9,6 @@ type AnswerGridProps = {
   selected: string | null;
   answerState: AnswerState;
   disabled: boolean;
-  crit?: boolean;
   onSelect: (answer: string) => void;
 };
 
@@ -18,7 +17,6 @@ export function AnswerGrid({
   selected,
   answerState,
   disabled,
-  crit = false,
   onSelect,
 }: AnswerGridProps) {
   return (
@@ -46,9 +44,6 @@ export function AnswerGrid({
               showReal &&
                 !isCorrect &&
                 "!opacity-100 border-emerald-500 bg-emerald-100 dark:bg-emerald-900",
-              crit &&
-                answerState === "idle" &&
-                "border-yellow-400 bg-yellow-50 dark:bg-yellow-900/40 shadow-[0_0_10px_rgba(250,204,21,0.4)]",
             )}
           >
             <CardBody className="p-3 sm:p-4 min-h-[3.75rem] h-full flex items-center">

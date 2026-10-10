@@ -144,11 +144,11 @@ function ResultPage() {
   let modeLine: string | null = null;
   if (mode === "solo") {
     const vs = summary?.opponent ?? "BOT";
-    modeLine = `Solo battle vs ${vs}`;
+    modeLine = `Solo vs ${vs}`;
   } else if (mode === "room") {
     modeLine = summary?.opponent
-      ? `Online battle vs ${summary.opponent}`
-      : "Online battle";
+      ? `Online vs ${summary.opponent}`
+      : "Online game";
   }
 
   const missed = (summary?.words ?? []).filter((w) => !w.correct);
@@ -173,7 +173,7 @@ function ResultPage() {
         {summary && summary.answered > 0 && (
           <div
             className={`grid gap-2 w-full max-w-xs mt-8 ${
-              timed ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"
+              timed ? "grid-cols-3" : "grid-cols-2"
             }`}
           >
             <Stat
@@ -192,11 +192,6 @@ function ResultPage() {
               label="Accuracy"
               value={`${accuracy}%`}
               tone="text-blue-400"
-            />
-            <Stat
-              label="Best streak"
-              value={summary.bestStreak}
-              tone="text-violet-400"
             />
           </div>
         )}

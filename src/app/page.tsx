@@ -12,7 +12,7 @@ import { useNameStore } from "./stores/nameStore";
 import {
   pickBattleWords,
   loadWordPool,
-  mergeWordLists,
+  roomWordSet,
 } from "../game/wordPool";
 import { loadWordStats } from "../game/wordProgress";
 import { loadWordList, saveWordList } from "../game/wordList";
@@ -28,6 +28,7 @@ import {
 } from "../game/roomService";
 import {
   DEFAULT_PLAYER_NAMES,
+  MARKS_PER_PLAYER,
   TURN_MS,
   WORDS_PER_BATTLE,
   type WordList,
@@ -132,11 +133,7 @@ export default function BattleHub() {
         !startingRef.current
       ) {
         startingRef.current = true;
-        const merged = mergeWordLists(
-          r.words,
-          r.players.p2.words ?? [],
-          r.words.length || WORDS_PER_BATTLE,
-        );
+        const merged = roomWordSet(r.words, r.players.p2.words ?? []);
         startGame(r.code, merged).catch((e) => {
           startingRef.current = false;
           console.error(e);
@@ -334,8 +331,8 @@ export default function BattleHub() {
                     VS BOT
                   </h2>
                   <p className="text-xs text-gray-400 mt-1">
-                    Fast {WORDS_PER_BATTLE}-word run — no account needed,
-                    works fully offline.
+                    Answer words to place your X — {MARKS_PER_PLAYER} in a row
+                    wins. No account needed, works fully offline.
                   </p>
                 </div>
                 <BotFace />
@@ -345,10 +342,10 @@ export default function BattleHub() {
               <div className="grid grid-cols-3 gap-2 mt-4">
                 <div className="rounded-lg bg-gray-800/60 px-2 py-2 text-center">
                   <p className="text-base sm:text-lg font-black text-purple-400 leading-tight">
-                    {SOLO_BOT.hp}
+                    {MARKS_PER_PLAYER} max
                   </p>
                   <p className="text-[10px] uppercase tracking-wide text-gray-500">
-                    bot hp
+                    marks held
                   </p>
                 </div>
                 <div className="rounded-lg bg-gray-800/60 px-2 py-2 text-center">

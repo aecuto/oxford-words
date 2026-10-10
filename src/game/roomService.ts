@@ -20,12 +20,19 @@ import {
   MAX_WORDS_PER_ROOM,
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LEN,
-  WORDS_PER_BATTLE,
 } from "../lib/gameConfig";
 import { getFirebase, tsToMillis } from "../lib/firebase";
-import { mergeWordLists } from "./wordPool";
-import type { BattleWord, Hit, LastAnswer, OpenRoom, RoomDoc, SlotKey, Winner } from "./types";
-import type { ClientRoom, PlayerSlot } from "./types";
+import { roomWordSet } from "./wordPool";
+import { applyPlacement, createBoard } from "./tictactoe";
+import type {
+  BattleWord,
+  ClientRoom,
+  LastAnswer,
+  OpenRoom,
+  RoomDoc,
+  SlotKey,
+  Winner,
+} from "./types";
 
 function roomRef(code: string) {
   const { fs } = getFirebase();
@@ -40,8 +47,15 @@ function randomCode(): string {
   return code;
 }
 
-function newSlot(uid: string, name: string, words: BattleWord[]): PlayerSlot {
-  return { uid, name, streak: 0, hits: [], lastAnswer: null, words };
+function newSlot(uid: string, name: string, words: BattleWord[]): RoomDoc["players"][SlotKey] {
+  return {
+    uid,
+    name,
+    lastAnswer: null,
+    correctIdx: [],
+    wrongIdx: [],
+    words,
+  };
 }
 
 function toClientRoom(data: RoomDoc | undefined): ClientRoom | null {
@@ -73,7 +87,11 @@ export async function createRoom(
       words: sliced,
       wordIndex: 0,
       turnStartedAt: null,
-      players: { p1: newSlot(uid, name, []), p2: null },
+      board: createBoard(),
+      moves: [],
+      // p1.words keeps the host's full pick so startGame can merge both
+      // halves (the doc-level `words` is only the join-exclusion preview).
+      players: { p1: newSlot(uid, name, sliced), p2: null },
       winner: null,
       rematchReady: { p1: false, p2: false },
       createdAt: serverTimestamp() as unknown as RoomDoc["createdAt"],
@@ -173,22 +191,48 @@ export async function submitAnswer(
   code: string,
   key: SlotKey,
   lastAnswer: LastAnswer,
-  hit: Hit | null,
-  streak: number,
-  oppHit: Hit | null = null
+  correct: boolean
 ): Promise<void> {
-  const oppKey: SlotKey = key === "p1" ? "p2" : "p1";
+  // Only the field this answer lands in is written — a plain [] assignment
+  // would wipe the opposite array's accumulated history.
   const update: Record<string, unknown> = {
     [`players.${key}.lastAnswer`]: lastAnswer,
-    [`players.${key}.streak`]: streak,
+    [`players.${key}.${correct ? "correctIdx" : "wrongIdx"}`]: arrayUnion(
+      lastAnswer.wordIndex
+    ),
   };
-  if (hit) {
-    update[`players.${key}.hits`] = arrayUnion(hit);
-  }
-  if (oppHit) {
-    update[`players.${oppKey}.hits`] = arrayUnion(oppHit);
-  }
   await updateDoc(roomRef(code), update);
+}
+
+// Place the player's earned mark. A transaction re-reads the doc so two
+// players tapping the same cell can't both land: the loser's write is a
+// no-op and the refreshed snapshot shows the cell occupied for a re-tap.
+// Returns whether the placement landed.
+export async function placeMark(
+  code: string,
+  slot: SlotKey,
+  cell: number,
+  wordIndex: number
+): Promise<boolean> {
+  const { fs } = getFirebase();
+  const ref = roomRef(code) as DocumentReference<RoomDoc>;
+  let landed = false;
+  await runTransaction(fs, async (tx) => {
+    const snap = await tx.get(ref);
+    const room = snap.data();
+    if (!room || room.status !== "playing") return;
+    const res = applyPlacement(
+      room.board ?? createBoard(),
+      room.moves ?? [],
+      slot,
+      cell,
+      wordIndex
+    );
+    if (!res) return;
+    landed = true;
+    tx.update(ref, { board: res.board, moves: res.moves });
+  });
+  return landed;
 }
 
 export async function advanceWord(code: string, nextIndex: number): Promise<void> {
@@ -254,24 +298,21 @@ export async function rematchRoom(
         ? room.players.p1.words
         : room.words;
     const p2Words = room.players.p2?.words ?? [];
-    const merged = mergeWordLists(
-      p1Words,
-      p2Words,
-      p1Words.length || WORDS_PER_BATTLE
-    );
     tx.update(ref, {
       status: "playing",
       winner: null,
       wordIndex: 0,
       turnStartedAt: serverTimestamp(),
-      words: merged,
+      words: roomWordSet(p1Words, p2Words),
+      board: createBoard(),
+      moves: [],
       rematchReady: { p1: false, p2: false },
-      "players.p1.hits": [],
-      "players.p1.streak": 0,
       "players.p1.lastAnswer": null,
-      "players.p2.hits": [],
-      "players.p2.streak": 0,
+      "players.p1.correctIdx": [],
+      "players.p1.wrongIdx": [],
       "players.p2.lastAnswer": null,
+      "players.p2.correctIdx": [],
+      "players.p2.wrongIdx": [],
     });
   });
 }

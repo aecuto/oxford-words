@@ -3,15 +3,12 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSoloBattleStore } from "../stores/soloBattleStore";
-import { BattleScreen } from "../components/battle/BattleScreen";
+import { GameScreen } from "../components/battle/GameScreen";
 import { Button } from "../components/ui/Button";
 import { playWordAudio } from "../playWordAudio";
-import { MAX_HP } from "../../lib/gameConfig";
-import { SOLO_BOT } from "../../game/botBrain";
 
 export default function SoloPage() {
   const router = useRouter();
-  const bot = SOLO_BOT;
   const { phase, error, view, outcome } = useSoloBattleStore();
 
   // Mount/unmount drive the store's pool loading and bot clock.
@@ -36,6 +33,8 @@ export default function SoloPage() {
 
   const submit = (answer: string | null) =>
     useSoloBattleStore.getState().submitPlayer(answer);
+  const place = (cell: number) =>
+    useSoloBattleStore.getState().placeMyMark(cell);
 
   if (phase === "loading" || !view) {
     return (
@@ -58,13 +57,11 @@ export default function SoloPage() {
 
   return (
     <div className="dark min-h-dvh pt-safe pb-safe">
-      <BattleScreen
+      <GameScreen
         view={view}
-        myMaxHp={MAX_HP}
-        oppMaxHp={bot.hp}
         onAnswer={submit}
+        onPlace={place}
         onPlayWord={() => playWordAudio(view.word?.pronounceURL)}
-        onExit={() => router.push("/")}
         onViewResult={() =>
           router.push(`/result?outcome=${view.outcome}&mode=solo`)
         }

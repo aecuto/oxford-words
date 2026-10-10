@@ -10,10 +10,6 @@ export type BattleWordDetail = {
   correct: boolean;
   /** graded instant (<2s) → mastered; absent when timing is unavailable (PvP) */
   instant?: boolean;
-  /** HP you dealt to the opponent on this word */
-  dealt: number;
-  /** HP you lost on this word (miss penalty or opponent hits) */
-  taken: number;
 };
 
 export type BattleSummary = {
@@ -24,13 +20,10 @@ export type BattleSummary = {
   total: number;
   answered: number;
   correct: number;
-  bestStreak: number;
-  damageDealt: number;
-  damageTaken: number;
   words: BattleWordDetail[];
 };
 
-const KEY = "battle:summary:v2";
+const KEY = "battle:summary:v3";
 
 export function saveBattleSummary(summary: BattleSummary): void {
   try {

@@ -5,10 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { cx } from "@emotion/css";
 import { useRoomBattleStore } from "../../stores/roomBattleStore";
 import { useNameStore } from "../../stores/nameStore";
-import { BattleScreen } from "../../components/battle/BattleScreen";
+import { GameScreen } from "../../components/battle/GameScreen";
 import { Card, CardBody } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
-import { MAX_HP } from "../../../lib/gameConfig";
 import { describeAuthError } from "../../../lib/firebase";
 import { playWordAudio } from "../../playWordAudio";
 
@@ -21,6 +20,9 @@ function RoomPage() {
 
   const submit = useCallback((answer: string | null) => {
     void useRoomBattleStore.getState().submitPlayer(answer);
+  }, []);
+  const place = useCallback((cell: number) => {
+    void useRoomBattleStore.getState().placeMyMark(cell);
   }, []);
   const join = useCallback((joinName: string) => {
     void useRoomBattleStore.getState().join(joinName);
@@ -157,13 +159,11 @@ function RoomPage() {
 
   return (
     <div className="dark min-h-dvh pt-safe pb-safe">
-      <BattleScreen
+      <GameScreen
         view={view}
-        myMaxHp={MAX_HP}
-        oppMaxHp={MAX_HP}
         onAnswer={submit}
+        onPlace={place}
         onPlayWord={() => playWordAudio(view.word?.pronounceURL)}
-        onExit={() => router.push("/")}
         onViewResult={() =>
           router.push(`/result?outcome=${view.outcome}&mode=room`)
         }

@@ -10,10 +10,25 @@ import {
   loadWordPool,
   mergeWordLists,
   pickBattleWords,
+  roomWordSet,
 } from "../src/game/wordPool";
 import { saveWordResults, type WordResult, type WordStats } from "../src/game/wordProgress";
-import { ANSWER_OPTIONS, DAY_MS, WORDS_PER_BATTLE } from "../src/lib/gameConfig";
-import type { BattleWord, Word } from "../src/game/types";
+import {
+  applyPlacement,
+  botPickCell,
+  checkWinner,
+  createBoard,
+  markFor,
+  nextToFade,
+} from "../src/game/tictactoe";
+import {
+  ANSWER_OPTIONS,
+  DAY_MS,
+  MARKS_PER_PLAYER,
+  MAX_WORDS_PER_ROOM,
+  WORDS_PER_BATTLE,
+} from "../src/lib/gameConfig";
+import type { BattleWord, Move, SlotKey, Word } from "../src/game/types";
 
 const BATTLES = 100;
 
@@ -148,9 +163,11 @@ async function main() {
   });
 
   // PvP — useBattleRoom: host and guest each run the same picker with their
-  // own stats; the room merges both lists with mergeWordLists. Guest join
-  // excludes the host's published words; a rematch excludes the shared battle
-  // just played (each player's summary covers the shared room word list).
+  // own stats; the room plays roomWordSet (both full halves merged, capped
+  // at MAX_WORDS_PER_ROOM) so a game can run past the first
+  // WORDS_PER_BATTLE words. Guest join excludes the host's published words;
+  // a rematch excludes the shared battle just played (each player's summary
+  // covers the shared room word list).
   check(`PvP: ${BATTLES} merged host+guest battles, no duplicates, no repeats`, () => {
     let hostStats: WordStats = {};
     let guestStats: WordStats = {};
@@ -166,8 +183,10 @@ async function main() {
       );
       assertValidBattle(host, poolWords);
       assertValidBattle(guest, poolWords);
-      const merged = mergeWordLists(host, guest, WORDS_PER_BATTLE);
-      assert.equal(merged.length, WORDS_PER_BATTLE, "merged room set is short");
+      const merged = roomWordSet(host, guest);
+      const union = new Set([...host, ...guest].map((w) => w.word)).size;
+      assert.equal(merged.length, Math.min(union, MAX_WORDS_PER_ROOM), "merged room set is short");
+      assert.ok(merged.length >= WORDS_PER_BATTLE, "merged room set below one battle");
       assertValidBattle(merged, poolWords);
       if (prev.length) assertNoOverlap(prev, merged, "PvP");
       hostStats = saveWordResults(host.map((w) => ({ word: w.word, correct: i % 2 === 0 })));
@@ -181,6 +200,78 @@ async function main() {
     const solo = pickBattleWords(pool, 1, {})[0];
     const merged = mergeWordLists(pickBattleWords(pool, 1, {}), [], 1);
     assert.deepEqual(Object.keys(solo).sort(), Object.keys(merged[0]).sort());
+  });
+
+  // Infinite Tic-Tac-Toe board rules — the win condition both modes share.
+  const placeSeq = (
+    board: ReturnType<typeof createBoard>,
+    moves: Move[],
+    slot: SlotKey,
+    cells: number[],
+  ) => {
+    let b = board;
+    let m = moves;
+    for (const cell of cells) {
+      const res = applyPlacement(b, m, slot, cell, 0);
+      assert.ok(res, `placement at ${cell} was rejected`);
+      b = res!.board;
+      m = res!.moves;
+    }
+    return { board: b, moves: m };
+  };
+
+  check("tictactoe: 3 in a row wins on every line", () => {
+    const lines = [
+      [0, 1, 2], [3, 4, 5], [6, 7, 8],
+      [0, 3, 6], [1, 4, 7], [2, 5, 8],
+      [0, 4, 8], [2, 4, 6],
+    ];
+    for (const line of lines) {
+      const { board } = placeSeq(createBoard(), [], "p1", line);
+      assert.equal(checkWinner(board), "X", `line ${line} did not win`);
+    }
+    assert.equal(checkWinner(createBoard()), null, "empty board has a winner");
+    const { board: mixed } = placeSeq(createBoard(), [], "p1", [0, 4]);
+    const { board: both } = placeSeq(mixed, [], "p2", [2, 5]);
+    assert.equal(checkWinner(both), null, "scattered marks won");
+  });
+
+  check("tictactoe: a 4th placement fades the oldest mark", () => {
+    const { board, moves } = placeSeq(createBoard(), [], "p1", [0, 1, 2, 3]);
+    assert.equal(board[0], "", "oldest mark did not fade");
+    assert.equal(board[3], "X", "newest mark missing");
+    const onBoard = board.filter((c) => c === "X").length;
+    assert.equal(onBoard, MARKS_PER_PLAYER, "a side holds more marks than allowed");
+    // The next fade targets the oldest mark STILL ON THE BOARD, not the
+    // already-faded cell the moves history starts with.
+    assert.equal(nextToFade(board, moves, "p1"), 1, "fade highlight points at a faded cell");
+    const { board: after5 } = placeSeq(board, moves, "p1", [4]);
+    assert.equal(after5[1], "", "second-oldest mark did not fade");
+    assert.equal(after5[4], "X", "fifth placement missing");
+    // Occupied and out-of-range cells are rejected (PvP collision path).
+    assert.equal(applyPlacement(after5, moves, "p2", 4, 0), null, "occupied cell accepted");
+    assert.equal(applyPlacement(after5, moves, "p2", 9, 0), null, "out-of-range cell accepted");
+  });
+
+  check("tictactoe: bot takes a win, blocks a loss, plays a free cell", () => {
+    // No fake wins: X at 0,1,5 — a naive copy of the board would call 2 a
+    // winning cell (0,1,2), but the placement fades 0 and erases the line.
+    // The bot must see no win and play any free cell.
+    const twoInline = placeSeq(createBoard(), [], "p1", [0, 1, 5]);
+    const pick = botPickCell(twoInline.board, twoInline.moves, "p1");
+    assert.ok(pick != null && twoInline.board[pick] === "", "bot picked an occupied cell");
+    // Genuine win: X at 3,4 with O elsewhere — 5 completes the middle row
+    // and, with only two marks held, nothing fades.
+    const winnable = placeSeq(createBoard(), [], "p2", [0, 8]);
+    const { board: wb, moves: wm } = placeSeq(winnable.board, winnable.moves, "p1", [3, 4]);
+    assert.equal(botPickCell(wb, wm, "p1"), 5, "bot missed a winning placement");
+    // Block: O at 6,7 threatens 8 — and since O's oldest mark is 0, the
+    // fade on 8 clears 0, not the threat, so 8 is a real loss to prevent.
+    const blocking = placeSeq(createBoard(), [], "p2", [0, 6, 7]);
+    assert.equal(botPickCell(blocking.board, blocking.moves, "p1"), 8, "bot missed a block");
+    // Full board: no free cell, null.
+    const full = createBoard().map(() => markFor("p1"));
+    assert.equal(botPickCell(full, [], "p1"), null);
   });
 
   check("due review words re-enter a battle, capped below new words", () => {

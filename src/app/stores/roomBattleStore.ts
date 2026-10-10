@@ -2,34 +2,34 @@
 
 import { create } from "zustand";
 import {
-  computeHit,
-  clampElapsed,
-  deriveHp,
-  streakBreakPenalty,
-} from "../../game/damage";
-import {
   advanceWord,
   endGame,
   getRoom,
   joinRoom,
+  placeMark,
   startGame,
-  subscribeRoom,
   submitAnswer,
+  subscribeRoom,
 } from "../../game/roomService";
+import {
+  checkWinner,
+  createBoard,
+  markFor,
+  nextToFade,
+} from "../../game/tictactoe";
 import type {
   AnswerState,
+  Cell,
   ClientRoom,
-  Hit,
   LastAnswer,
-  Popup,
   ResultOutcome,
   RoomStatus,
   SlotKey,
+  Winner,
 } from "../../game/types";
 import {
   DEFAULT_PLAYER_NAMES,
-  POPUP_LIFETIME_MS,
-  TURN_GRACE_MS,
+  PLACEMENT_GRACE_MS,
   TURN_MS,
   WORDS_PER_BATTLE,
 } from "../../lib/gameConfig";
@@ -39,7 +39,7 @@ import {
   saveWordResults,
   type WordResult,
 } from "../../game/wordProgress";
-import { loadWordPool, pickBattleWords, mergeWordLists } from "../../game/wordPool";
+import { loadWordPool, pickBattleWords, roomWordSet } from "../../game/wordPool";
 import { recordResult } from "../../game/progressService";
 import {
   saveBattleSummary,
@@ -51,10 +51,16 @@ export type BattleOutcome = ResultOutcome | null;
 export type BattleView = {
   myName: string;
   oppName: string;
-  myHp: number;
-  oppHp: number;
-  myStreak: number;
-  oppStreak: number;
+  myMark: Cell;
+  oppMark: Cell;
+  board: Cell[];
+  moves: ClientRoom["moves"];
+  // I've earned a placement on the current word and haven't tapped a cell.
+  pendingPlacement: boolean;
+  // Cells that fade on the next placement of that side (the "about to
+  // vanish" highlight), null while a side holds fewer marks.
+  myNextFade: number | null;
+  oppNextFade: number | null;
   word: ClientRoom["words"][number] | null;
   wordNumber: number;
   wordTotal: number;
@@ -67,18 +73,16 @@ export type BattleView = {
   /** Solo only: the bot is mid-thought on the current word. */
   oppThinking?: boolean;
   turnStartedAt: number | null;
-  popups: Popup[];
   outcome: BattleOutcome;
 };
 
 // PvP battle state. Unlike solo, the room doc on Firestore is the source of
 // truth — this store mirrors the latest snapshot and owns every projection
-// (view, phase, isHost) plus its own damage popups, the snapshot guards and
-// the summary/SRS buffers. The imperative resources (subscription handle,
-// in-flight op dedupe, settle timer) are module state. Everything per-battle
-// is reset by connect() when a room page mounts, matching the per-mount
-// lifetime the old refs had. Lives in src/app/ — src/game/ stays
-// framework-free.
+// (view, phase, isHost) plus the snapshot guards and the summary/SRS
+// buffers. The imperative resources (subscription handle, in-flight op
+// dedupe, settle timer) are module state. Everything per-battle is reset by
+// connect() when a room page mounts, matching the per-mount lifetime the
+// old refs had. Lives in src/app/ — src/game/ stays framework-free.
 type RoomWordDetail = {
   wordIndex: number;
   word: string;
@@ -100,24 +104,23 @@ type RoomBattleState = {
   error: string | null;
   needsJoin: boolean;
   joining: boolean;
-  // Hit-count diff per side between snapshots: only the delta spawns a
-  // damage popup, so reconnects don't replay the whole battle.
-  hpLens: { me: number; opp: number } | null;
   // Submit-once guard for the current word (clicks, deadline, retries).
   submittedWord: number;
+  // Placement-once guard for the current word (double taps before the
+  // placement transaction's snapshot lands); reset when the placement
+  // didn't land so an occupied cell can be re-tapped.
+  placedWord: number;
   // Only record progress for battles actually seen live, never for a
   // snapshot replay of a finished room.
   liveSeen: boolean;
   recordedRoom: string | null;
   // Summary/SRS buffers, drained by the outcome action.
   results: WordResult[];
-  bestStreak: number;
   wordDetails: RoomWordDetail[];
   // React-facing projections, recomputed by commit() after every mutation.
   view: BattleView | null;
   phase: RoomPhase;
   isHost: boolean;
-  popups: Popup[];
 };
 
 const freshRoomBattle = (code: string | null): RoomBattleState => ({
@@ -127,23 +130,22 @@ const freshRoomBattle = (code: string | null): RoomBattleState => ({
   error: null,
   needsJoin: false,
   joining: false,
-  hpLens: null,
   submittedWord: -1,
+  placedWord: -1,
   liveSeen: false,
   recordedRoom: null,
   results: [],
-  bestStreak: 0,
   wordDetails: [],
   view: null,
   phase: "loading",
   isHost: false,
-  popups: [],
 });
 
 // Imperative resources — never rendered, never mirrored in React.
 let unsub: (() => void) | null = null;
 const acting = new Set<string>();
 let settleTimer: number | null = null;
+let settleWord: number | null = null;
 
 function slotOf(r: ClientRoom, uid: string): SlotKey | null {
   return r.players.p1?.uid === uid
@@ -160,32 +162,27 @@ function roomOutcome(room: ClientRoom, uid: string): BattleOutcome {
   return room.winner === "draw" ? "draw" : room.winner === key ? "win" : "lose";
 }
 
-function penaltyHit(wordIndex: number, brokenStreak: number): Hit {
-  return {
-    wordIndex,
-    damage: streakBreakPenalty(brokenStreak),
-    crit: false,
-    at: Date.now(),
-  };
-}
-
 function buildRoomView(
   room: ClientRoom,
-  slotKey: SlotKey,
-  popups: Popup[]
+  slotKey: SlotKey
 ): BattleView {
   const oppKey: SlotKey = slotKey === "p1" ? "p2" : "p1";
   const my = room.players[slotKey];
   const opp = room.players[oppKey];
+  const board = room.board ?? createBoard();
+  const moves = room.moves ?? [];
   if (!my) {
     // Unreachable: a snapshot is only accepted once the player is seated.
     return {
       myName: "",
       oppName: "",
-      myHp: 0,
-      oppHp: 0,
-      myStreak: 0,
-      oppStreak: 0,
+      myMark: "X",
+      oppMark: "O",
+      board,
+      moves,
+      pendingPlacement: false,
+      myNextFade: null,
+      oppNextFade: null,
       word: null,
       wordNumber: 1,
       wordTotal: room.words.length,
@@ -193,13 +190,10 @@ function buildRoomView(
       answerState: "idle",
       waitingOpp: false,
       turnStartedAt: null,
-      popups,
       outcome: null,
     };
   }
 
-  const myHp = deriveHp(opp?.hits ?? []);
-  const oppHp = deriveHp(my.hits);
   const current = room.words[room.wordIndex] ?? null;
   const answeredCurrent = my.lastAnswer?.wordIndex === room.wordIndex;
   const answerState: BattleView["answerState"] = !answeredCurrent
@@ -220,19 +214,31 @@ function buildRoomView(
           : "lose"
       : null;
 
+  // A correct answer keeps the board open for me until my move for this
+  // word shows up on the doc — placements and answers resolve on their own
+  // clocks (the placement transaction can lag the answer write).
+  const pendingPlacement =
+    room.status === "playing" &&
+    answeredCurrent &&
+    my.lastAnswer!.correct &&
+    !moves.some((m) => m.slot === slotKey && m.wordIndex === room.wordIndex);
+
   return {
     myName: my.name,
     oppName: opp?.name ?? "Waiting...",
-    myHp,
-    oppHp,
-    myStreak: my.streak,
-    oppStreak: opp?.streak ?? 0,
+    myMark: markFor(slotKey),
+    oppMark: markFor(oppKey),
+    board,
+    moves,
+    pendingPlacement: pendingPlacement && outcome === null,
+    myNextFade: nextToFade(board, moves, slotKey),
+    oppNextFade: nextToFade(board, moves, oppKey),
     word: current,
     wordNumber: room.wordIndex + 1,
     wordTotal: room.words.length,
     wordResults: room.words.map((_, i) => {
-      if (my.hits.some((h) => h.wordIndex === i)) return true;
-      if (opp?.hits.some((h) => h.wordIndex === i)) return false;
+      if (my.correctIdx?.includes(i)) return true;
+      if (my.wrongIdx?.includes(i)) return false;
       if (i === room.wordIndex) {
         return answeredCurrent ? my.lastAnswer!.correct : null;
       }
@@ -242,7 +248,6 @@ function buildRoomView(
     answerState,
     waitingOpp: answeredCurrent && !oppAnswered && room.status === "playing",
     turnStartedAt: room.status === "playing" ? room.turnStartedAt ?? null : null,
-    popups,
     outcome,
   };
 }
@@ -253,8 +258,8 @@ const stopWatching = () => {
 };
 
 // Only the page-facing surface: connect/disconnect lifecycle, the join
-// flow, host settle paths and the answer entry points. Everything else
-// (snapshot diffing, op dedupe, submit guards, summary buffers) stays
+// flow, host settle paths and the answer/placement entry points. Everything
+// else (snapshot guards, op dedupe, submit guards, summary buffers) stays
 // store-internal and never reaches React.
 type RoomBattleActions = {
   connect: (code: string) => Promise<void>;
@@ -264,6 +269,7 @@ type RoomBattleActions = {
   settleTurn: () => void;
   deadlineTick: () => void;
   submitPlayer: (answer: string | null) => Promise<void>;
+  placeMyMark: (cell: number) => Promise<void>;
   recordOutcome: () => void;
 };
 
@@ -278,7 +284,7 @@ export const useRoomBattleStore = create<
       next.room && next.uid ? slotOf(next.room, next.uid) : null;
     const view =
       next.room && slotKey
-        ? buildRoomView(next.room, slotKey, next.popups)
+        ? buildRoomView(next.room, slotKey)
         : null;
     const isHost =
       next.room != null && next.uid != null && next.room.hostUid === next.uid;
@@ -299,14 +305,6 @@ export const useRoomBattleStore = create<
     set({ ...partial, view, isHost, phase });
   };
 
-  const spawnPopup = (side: Popup["side"], damage: number, crit: boolean) => {
-    const popup: Popup = { id: Date.now() + Math.random(), side, damage, crit };
-    commit({ popups: [...get().popups.slice(-4), popup] });
-    window.setTimeout(() => {
-      commit({ popups: get().popups.filter((p) => p.id !== popup.id) });
-    }, POPUP_LIFETIME_MS);
-  };
-
   /** Dedupes concurrent network ops by key (host settle, timeout, ...). */
   const act = (key: string, fn: () => Promise<unknown>) => {
     if (acting.has(key)) return;
@@ -324,40 +322,16 @@ export const useRoomBattleStore = create<
     // only accept snapshots for the bound room.
     if (!state.code || (r != null && r.code !== state.code)) return;
     if (!r) {
-      commit({ room: null, hpLens: null });
+      commit({ room: null });
       return;
     }
     const key = slotOf(r, myUid);
     if (!key) {
-      commit({ room: r, hpLens: null });
+      commit({ room: r });
       return;
     }
-
-    // Diff hit counts against the previous snapshot; only new hits spawn
-    // popups, and only when they landed on the current word.
-    const oppKey: SlotKey = key === "p1" ? "p2" : "p1";
-    const myHits = r.players[key]?.hits ?? [];
-    const oppHits = r.players[oppKey]?.hits ?? [];
-    const lens = { me: oppHits.length, opp: myHits.length };
-    const prev = state.hpLens;
-    if (prev) {
-      if (lens.opp > prev.opp) {
-        const hit = myHits[lens.opp - 1];
-        if (hit && hit.wordIndex === r.wordIndex) {
-          spawnPopup("opp", hit.damage, hit.crit);
-        }
-      }
-      if (lens.me > prev.me) {
-        const hit = oppHits[lens.me - 1];
-        if (hit && hit.wordIndex === r.wordIndex) {
-          spawnPopup("me", hit.damage, hit.crit);
-        }
-      }
-    }
-
     commit({
       room: r,
-      hpLens: lens,
       liveSeen: r.status === "playing" ? true : state.liveSeen,
     });
   };
@@ -377,10 +351,6 @@ export const useRoomBattleStore = create<
   };
 
   const releaseSubmit = () => set({ submittedWord: -1 });
-
-  const noteBestStreak = (streak: number) => {
-    if (streak > get().bestStreak) set({ bestStreak: streak });
-  };
 
   const pushAnswered = (result: WordResult, detail: RoomWordDetail) =>
     set((state) => ({
@@ -402,35 +372,15 @@ export const useRoomBattleStore = create<
     const current = r.words[r.wordIndex];
     if (!current) return;
 
-    const elapsed = clampElapsed(
-      r.turnStartedAt == null ? TURN_MS : Date.now() - r.turnStartedAt
+    const elapsed = Math.min(
+      Math.max(
+        r.turnStartedAt == null ? TURN_MS : Date.now() - r.turnStartedAt,
+        0
+      ),
+      TURN_MS
     );
     const timeout = answer == null;
     const correct = !timeout && answer === current.correctAnswer;
-    const streak = correct ? my.streak + 1 : 0;
-    noteBestStreak(streak);
-
-    // First answer on this word earns the race bonus — the opponent's
-    // lastAnswer not covering the current word means I committed first.
-    const oppKey: SlotKey = key === "p1" ? "p2" : "p1";
-    const firstAnswer = r.players[oppKey]?.lastAnswer?.wordIndex !== r.wordIndex;
-
-    let hit: Hit | null = null;
-    let oppHit: Hit | null = null;
-    if (correct) {
-      const res = computeHit(elapsed, my.streak, firstAnswer);
-      if (res) {
-        hit = {
-          wordIndex: r.wordIndex,
-          damage: res.damage,
-          crit: res.crit,
-          at: Date.now(),
-        };
-      }
-    } else {
-      // Breaking my correct streak feeds the opponent a bigger penalty hit.
-      oppHit = penaltyHit(r.wordIndex, my.streak);
-    }
 
     const lastAnswer: LastAnswer = {
       wordIndex: r.wordIndex,
@@ -456,13 +406,11 @@ export const useRoomBattleStore = create<
       }
     );
 
-    await submitAnswer(r.code, key, lastAnswer, hit, streak, oppHit).catch(
-      (e) => {
-        console.error("battle:submit", e);
-        // Let the click or the deadline retry this word.
-        releaseSubmit();
-      }
-    );
+    await submitAnswer(r.code, key, lastAnswer, correct).catch((e) => {
+      console.error("battle:submit", e);
+      // Let the click or the deadline retry this word.
+      releaseSubmit();
+    });
   };
 
   return {
@@ -505,6 +453,7 @@ export const useRoomBattleStore = create<
       if (settleTimer != null) {
         window.clearTimeout(settleTimer);
         settleTimer = null;
+        settleWord = null;
       }
     },
 
@@ -550,56 +499,79 @@ export const useRoomBattleStore = create<
       if (r.rematchReady?.p1 || r.rematchReady?.p2) return;
       if (r.status === "waiting" && r.players.p2 != null) {
         act("start", async () => {
-          const merged = mergeWordLists(
-            r.words,
-            r.players.p2?.words ?? [],
-            r.words.length || WORDS_PER_BATTLE
-          );
+          const merged = roomWordSet(r.words, r.players.p2?.words ?? []);
           await startGame(r.code, merged);
         });
       }
     },
 
+    // Host-only: ends the game on a finished board, otherwise advances once
+    // the word is fully resolved — both answers in, every earned placement
+    // on the board (a player who ran out the clock without placing
+    // forfeits the mark). Re-runs on every snapshot; the scheduled settle
+    // is keyed by word so live snapshots can't reset it forever.
     settleTurn: () => {
-      if (settleTimer != null) {
-        window.clearTimeout(settleTimer);
-        settleTimer = null;
-      }
       const st = get();
       const r = st.room;
       if (!r || !st.uid || st.uid !== r.hostUid) return;
       if (r.status !== "playing" || r.turnStartedAt == null) return;
 
       const current = r.wordIndex;
+      const board = r.board ?? createBoard();
+      const moves = r.moves ?? [];
+
+      // A finished board outranks everything: end immediately.
+      const winnerMark = checkWinner(board);
+      if (winnerMark) {
+        if (settleTimer != null) {
+          window.clearTimeout(settleTimer);
+          settleTimer = null;
+          settleWord = null;
+        }
+        const winner: Winner = winnerMark === "X" ? "p1" : "p2";
+        act(`end-${current}`, () => endGame(r.code, winner));
+        return;
+      }
+
       const answered = (k: SlotKey) =>
         r.players[k]?.lastAnswer?.wordIndex === current;
       const bothAnswered =
         answered("p1") && r.players.p2 != null && answered("p2");
-      const expired = Date.now() > r.turnStartedAt + TURN_MS + TURN_GRACE_MS;
-      if (!bothAnswered && !expired) return;
+      if (!bothAnswered) return;
 
-      const hp1 = deriveHp(r.players.p2?.hits ?? []);
-      const hp2 = deriveHp(r.players.p1?.hits ?? []);
-      const ko = hp1 <= 0 || hp2 <= 0;
+      const placementMissing = (k: SlotKey) => {
+        const p = r.players[k];
+        if (!p?.lastAnswer || p.lastAnswer.wordIndex !== current) return false;
+        if (!p.lastAnswer.correct) return false;
+        return !moves.some((m) => m.slot === k && m.wordIndex === current);
+      };
+      const forfeit =
+        Date.now() > r.turnStartedAt + TURN_MS + PLACEMENT_GRACE_MS;
+      if ((placementMissing("p1") || placementMissing("p2")) && !forfeit) {
+        return;
+      }
+
       const lastWord = current + 1 >= r.words.length;
-
-      const settleMs = bothAnswered && !expired ? 900 : 0;
+      if (settleTimer != null && settleWord === current) return;
+      if (settleTimer != null) {
+        window.clearTimeout(settleTimer);
+        settleTimer = null;
+      }
+      settleWord = current;
       settleTimer = window.setTimeout(() => {
         settleTimer = null;
-        if (ko || lastWord) {
-          const winner =
-            hp1 <= 0 && hp2 <= 0
-              ? "draw"
-              : hp1 <= 0
-                ? "p2"
-                : hp2 <= 0
-                  ? "p1"
-                  : byHp(hp1, hp2);
+        settleWord = null;
+        if (lastWord) {
+          // The words ran dry before a 3-in-a-row: most correct answers
+          // wins, tracked doc-side as each answer lands.
+          const c1 = r.players.p1?.correctIdx?.length ?? 0;
+          const c2 = r.players.p2?.correctIdx?.length ?? 0;
+          const winner: Winner = c1 === c2 ? "draw" : c1 > c2 ? "p1" : "p2";
           act(`end-${current}`, () => endGame(r.code, winner));
         } else {
           act(`adv-${current}`, () => advanceWord(r.code, current + 1));
         }
-      }, settleMs);
+      }, 900);
     },
 
     deadlineTick: () => {
@@ -639,14 +611,36 @@ export const useRoomBattleStore = create<
             correct: false,
             at: Date.now(),
           },
-          null,
-          0,
-          penaltyHit(cur.wordIndex, my.streak)
+          false
         )
       );
     },
 
     submitPlayer,
+
+    placeMyMark: async (cell) => {
+      const st = get();
+      const r = st.room;
+      const myUid = st.uid;
+      if (!r || r.status !== "playing" || !myUid) return;
+      const key = slotOf(r, myUid);
+      if (!key) return;
+      if (!st.view?.pendingPlacement) return;
+      const board = r.board ?? createBoard();
+      if (cell < 0 || cell >= board.length || board[cell] !== "") return;
+      // Block double taps before the transaction's snapshot lands; if the
+      // placement didn't land (cell taken by a simultaneous opponent
+      // placement), re-open so the refreshed board can be re-tapped.
+      if (st.placedWord === r.wordIndex) return;
+      set({ placedWord: r.wordIndex });
+      let landed = false;
+      try {
+        landed = await placeMark(r.code, key, cell, r.wordIndex);
+      } catch (e) {
+        console.error("battle:place", e);
+      }
+      if (!landed) set({ placedWord: -1 });
+    },
 
     recordOutcome: () => {
       const st = get();
@@ -662,20 +656,12 @@ export const useRoomBattleStore = create<
       const slotKey = slotOf(room, st.uid);
       if (!slotKey) return;
       const oppKey: SlotKey = slotKey === "p1" ? "p2" : "p1";
-      const myHits = room.players[slotKey]?.hits ?? [];
-      const oppHits = room.players[oppKey]?.hits ?? [];
       const words: BattleWordDetail[] = st.wordDetails.map((d) => ({
         word: d.word,
         type: d.type,
         pronounceURL: room.words.find((w) => w.word === d.word)?.pronounceURL,
         answer: room.words.find((w) => w.word === d.word)?.correctAnswer,
         correct: d.correct,
-        dealt: myHits
-          .filter((h) => h.wordIndex === d.wordIndex)
-          .reduce((sum, h) => sum + h.damage, 0),
-        taken: oppHits
-          .filter((h) => h.wordIndex === d.wordIndex)
-          .reduce((sum, h) => sum + h.damage, 0),
       }));
       saveBattleSummary({
         outcome,
@@ -685,12 +671,9 @@ export const useRoomBattleStore = create<
         total: room.words.length,
         answered: words.length,
         correct: words.filter((w) => w.correct).length,
-        bestStreak: st.bestStreak,
-        damageDealt: words.reduce((sum, w) => sum + w.dealt, 0),
-        damageTaken: words.reduce((sum, w) => sum + w.taken, 0),
         words,
       });
-      recordResult(outcome, room.players[slotKey]?.streak ?? 0).catch((e) =>
+      recordResult(outcome).catch((e) =>
         console.error("progress:record", e)
       );
       const drained = get().results;
@@ -701,8 +684,3 @@ export const useRoomBattleStore = create<
     },
   };
 });
-
-function byHp(hp1: number, hp2: number): "p1" | "p2" | "draw" {
-  if (hp1 === hp2) return "draw";
-  return hp1 > hp2 ? "p1" : "p2";
-}

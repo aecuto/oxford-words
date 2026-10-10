@@ -162,11 +162,10 @@ export function ProgressPanel({ list }: { list?: WordList }) {
 
         {showRecord && (
           <div className="mt-4 pt-3 border-t border-gray-800 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-gray-400">
-            <span>{record!.games} battles</span>
+            <span>{record!.games} games</span>
             <span className="text-emerald-400 font-bold">{record!.wins}W</span>
             <span className="text-red-400 font-bold">{record!.losses}L</span>
             {record!.draws > 0 && <span>{record!.draws}D</span>}
-            <span>best streak {record!.bestStreak}</span>
           </div>
         )}
       </CardBody>

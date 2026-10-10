@@ -1,10 +1,11 @@
-export const MAX_HP = 100;
-
 export const TURN_MS = 10_000;
 export const TURN_GRACE_MS = 1_500;
 
 export const WORDS_PER_BATTLE = 20;
-export const MAX_WORDS_PER_ROOM = 30;
+// A room doc carries both players' full picks merged (2 × WORDS_PER_BATTLE),
+// so an Infinite Tic-Tac-Toe game that outlasts the first 20 words keeps
+// drawing from words[20..] with no extra writes.
+export const MAX_WORDS_PER_ROOM = 40;
 
 // Word list the game plays with ("3000" or "5000"). The player's pick is
 // persisted in localStorage via src/game/wordList.ts; this type anchors the
@@ -28,36 +29,16 @@ export const DEFAULT_PLAYER_NAMES = {
   p2: "Player 2",
 } as const;
 
-export const POPUP_LIFETIME_MS = 1_100;
+// Infinite Tic-Tac-Toe: a correct answer earns one mark placement (X or O)
+// on the shared 3x3 board; 3 in a row wins. Each side may hold at most
+// MARKS_PER_PLAYER marks — placing one more removes their oldest, so the
+// board can never clog and the game can never end in a board draw.
+export const MARKS_PER_PLAYER = 3;
 
-// Damage escalates through an unbroken streak — 3 → 4 → 5 → crit 8 — so
-// every 4 consecutive correct answers deal exactly 20. Two race bonuses sit
-// on top (see computeHit): answering a word before the opponent adds
-// FIRST_ANSWER_BONUS_DAMAGE, and a miss that breaks a correct streak feeds
-// the opponent STREAK_BREAK_BONUS per streak word. A miss drops you back to
-// the 3s, so losing tempo costs real damage on top of the wrong-answer
-// penalty. The array must stay CRIT_PERIOD long — its last slot is the crit
-// hit and isCrit indexes it by streak.
-export const DAMAGE = [3, 4, 5, 8] as const;
-
-// Bonus damage for the first player to answer a word (solo: whoever resolves
-// it first, player or bot) — added to their correct hit.
-export const FIRST_ANSWER_BONUS_DAMAGE = 3;
-
-// A wrong answer that breaks a correct streak feeds the opponent a penalty
-// hit of WRONG_ANSWER_HIT + STREAK_BREAK_BONUS × broken streak words, capped
-// by STREAK_BREAK_BONUS_CAP — breaking a long run costs real tempo.
-export const STREAK_BREAK_BONUS = 2;
-export const STREAK_BREAK_BONUS_CAP = 5;
-
-// The 4th consecutive answer is the crit; STREAK_FOR_CRIT also marks the
-// "charged" state the UI glows on (streak % 4 === 3, see isCritReady).
-export const STREAK_FOR_CRIT = 3;
-
-// The price of a wrong answer in every mode: PvP players pay it as a penalty
-// hit, and the solo bot pays the same price on its own misses (SOLO_BOT.hit
-// anchors to this value — the bot itself lives in src/game/botBrain.ts).
-export const WRONG_ANSWER_HIT = 5;
+// After a word's deadline has passed, a player who answered correctly but
+// never tapped a cell (offline, closed tab) forfeits that placement so the
+// host can advance instead of stalling forever.
+export const PLACEMENT_GRACE_MS = 4_000;
 
 export const COLLECTION = "oxfordwords_rooms";
 export const PROGRESS_COLLECTION = "oxfordwords_progress";
