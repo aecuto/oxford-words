@@ -17,16 +17,6 @@ export default function SoloPage() {
     return () => useSoloBattleStore.getState().unmount();
   }, []);
 
-  // Turn deadline: the interval only reads the store and fires the timeout
-  // once at expiry, so it never re-renders per tick (TimerBar animates).
-  useEffect(() => {
-    const id = window.setInterval(
-      () => useSoloBattleStore.getState().tick(),
-      100
-    );
-    return () => window.clearInterval(id);
-  }, []);
-
   useEffect(() => {
     if (outcome) useSoloBattleStore.getState().recordOutcome();
   }, [outcome]);

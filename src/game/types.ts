@@ -35,12 +35,17 @@ export type Move = {
   wordIndex: number;
 };
 
+// Self-paced turn state: each player walks the shared word list at their
+// own speed — wordIndex points at their current word and turnStartedAt is
+// when it was dealt to them (no waiting for the opponent between words).
 export type PlayerSlot = {
   uid: string;
   name: string;
+  wordIndex: number;
+  turnStartedAt: Timestamp | null;
   lastAnswer: LastAnswer | null;
   // Indices of words this player answered correctly / incorrectly — the
-  // per-word history hits[] used to provide, now that a miss leaves no mark.
+  // per-word history that feeds the pips and the judge-by-count finish.
   // correctIdx also decides a judge-by-count finish when the words run out.
   correctIdx: number[];
   wrongIdx: number[];
@@ -58,8 +63,6 @@ export type RoomDoc = {
   hostUid: string;
   status: RoomStatus;
   words: BattleWord[];
-  wordIndex: number;
-  turnStartedAt: Timestamp | null;
   board: Cell[];
   moves: Move[];
   players: Record<SlotKey, PlayerSlot | null>;
@@ -76,6 +79,6 @@ export type OpenRoom = {
   createdAt: number;
 };
 
-export type ClientRoom = Omit<RoomDoc, "turnStartedAt"> & {
-  turnStartedAt: number | null;
+export type ClientRoom = Omit<RoomDoc, "players"> & {
+  players: Record<SlotKey, Omit<PlayerSlot, "turnStartedAt"> & { turnStartedAt: number | null } | null>;
 };

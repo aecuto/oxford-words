@@ -27,9 +27,9 @@ import {
   startGame,
 } from "../game/roomService";
 import {
+  ANSWER_INSTANT_MS,
   DEFAULT_PLAYER_NAMES,
   MARKS_PER_PLAYER,
-  TURN_MS,
   WORDS_PER_BATTLE,
   type WordList,
 } from "../lib/gameConfig";
@@ -358,10 +358,10 @@ export default function BattleHub() {
                 </div>
                 <div className="rounded-lg bg-gray-800/60 px-2 py-2 text-center">
                   <p className="text-base sm:text-lg font-black text-purple-400 leading-tight">
-                    {TURN_MS / 1000}s
+                    {ANSWER_INSTANT_MS / 1000}s
                   </p>
                   <p className="text-[10px] uppercase tracking-wide text-gray-500">
-                    per word
+                    instant = mastered
                   </p>
                 </div>
               </div>

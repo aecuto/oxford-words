@@ -29,10 +29,7 @@ import type {
   Move,
   Word,
 } from "../../game/types";
-import {
-  TURN_MS,
-  WORDS_PER_BATTLE,
-} from "../../lib/gameConfig";
+import { WORDS_PER_BATTLE } from "../../lib/gameConfig";
 import {
   loadBattleSummary,
   saveBattleSummary,
@@ -135,10 +132,9 @@ function buildSoloView(s: SoloBattleState): BattleView {
     wordMarks: s.wordMarks,
     selected: s.selected,
     answerState: s.answerState,
-    waitingOpp: false,
+    feedback: null,
     // Solo only: the bot's deliberation is visible while its answer is pending.
     oppThinking: s.botThinking && s.outcome === null,
-    turnStartedAt: s.startedAt,
     outcome: s.outcome,
   };
 }
@@ -163,8 +159,6 @@ const clearTimers = () => {
 type SoloBattleActions = {
   mount: () => Promise<void>;
   unmount: () => void;
-  // Deadline interval tick: fires the timeout exactly once per word.
-  tick: () => void;
   submitPlayer: (answer: string | null) => void;
   placeMyMark: (cell: number) => void;
   recordOutcome: () => void;
@@ -322,10 +316,10 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
       if (!current) return;
 
       const now = Date.now();
-      const elapsed = Math.min(
-        Math.max(st.startedAt == null ? TURN_MS : now - st.startedAt, 0),
-        TURN_MS
-      );
+      // Response time since the word was dealt drives the 2-option SRS
+      // grade in wordProgress: instant (<2s) masters the word, everything
+      // else — slow, guess, wrong — is a retry that keeps it in Pool B.
+      const elapsed = Math.max(st.startedAt == null ? 0 : now - st.startedAt, 0);
       const timeout = answer == null;
       const correct = !timeout && answer === current.correctAnswer;
       // Response time + timeout flag drive the 2-option SRS grade in
@@ -440,15 +434,6 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
       unmount: () => {
         clearTimers();
         runner?.clear();
-      },
-
-      tick: () => {
-        const st = get();
-        if (st.outcome || st.answerState !== "idle" || st.startedAt == null) {
-          return;
-        }
-        if (Date.now() < st.startedAt + TURN_MS) return;
-        submitPlayer(null);
       },
 
       submitPlayer,

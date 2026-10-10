@@ -4,13 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { cx } from "@emotion/css";
 import { FlagIcon } from "@heroicons/react/24/solid";
 import type { BattleView } from "../../stores/roomBattleStore";
-import { TURN_MS } from "../../../lib/gameConfig";
 import { playSfx, preloadSfx } from "../../../lib/sfx";
 import { preloadWordAudio } from "../../playWordAudio";
 import { AnswerGrid } from "./AnswerGrid";
 import { Logo } from "../Logo";
 import { TicTacToeBoard } from "./TicTacToeBoard";
-import { TimerBar } from "./TimerBar";
 import { WordPlayBox } from "./WordPlayBox";
 import { WordProgress } from "./WordProgress";
 
@@ -20,6 +18,8 @@ type GameScreenProps = {
   onPlace: (cell: number) => void;
   onPlayWord: () => void;
   onViewResult: () => void;
+  /** Offered on the PvP finish panel (my list is done, opponent isn't). */
+  onExit?: () => void;
 };
 
 export function GameScreen({
@@ -28,6 +28,7 @@ export function GameScreen({
   onPlace,
   onPlayWord,
   onViewResult,
+  onExit,
 }: GameScreenProps) {
   const ended = view.outcome !== null;
 
@@ -95,13 +96,6 @@ export function GameScreen({
         />
       </div>
 
-      {/* Timer — stopped/hidden once the game has ended */}
-      {!ended && (
-        <div className="mb-2">
-          <TimerBar startedAt={view.turnStartedAt} totalMs={TURN_MS} />
-        </div>
-      )}
-
       {/* Board — the Infinite Tic-Tac-Toe scoreline both players play on */}
       <div className="mt-2 mb-3">
         <div className="flex items-center justify-between gap-2 mb-1.5 px-1 max-w-[300px] sm:max-w-[340px] mx-auto">
@@ -137,69 +131,69 @@ export function GameScreen({
       </div>
 
       {/* Word box — tap to play the sound; the word and answers appear inside.
-          Once the game ends, it is replaced by the view result box. */}
+          Once the game ends, it is replaced by the view result box; a PvP
+          player who has answered their whole list sees the finish panel. */}
       {ended ? (
         <div className="flex justify-center">{viewResultButton}</div>
+      ) : view.word ? (
+        <WordPlayBox
+          word={view.word}
+          played={soundUnlocked}
+          onTap={handlePlayWord}
+        >
+          {soundUnlocked && (
+            <AnswerGrid
+              word={view.word}
+              selected={view.selected}
+              answerState={view.answerState}
+              disabled={view.answerState !== "idle"}
+              onSelect={(answer) => {
+                onAnswer(answer);
+              }}
+            />
+          )}
+        </WordPlayBox>
       ) : (
-        view.word && (
-          <WordPlayBox
-            word={view.word}
-            played={soundUnlocked}
-            onTap={handlePlayWord}
-          >
-            {soundUnlocked && (
-              <AnswerGrid
-                word={view.word}
-                selected={view.selected}
-                answerState={view.answerState}
-                disabled={view.answerState !== "idle"}
-                onSelect={(answer) => {
-                  onAnswer(answer);
-                }}
-              />
-            )}
-          </WordPlayBox>
-        )
+        <div className="animate-popIn mx-auto max-w-sm rounded-xl border-2 border-gray-300/60 dark:border-gray-700 bg-white dark:bg-gray-900 p-6 text-center">
+          <p className="text-lg font-black mb-1">All words answered</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Waiting for {view.oppName} to finish — the game is judged when
+            you are both done.
+          </p>
+          {view.pendingPlacement && (
+            <p className="mt-2 text-xs font-bold text-blue-600 dark:text-blue-400">
+              You can still place your earned {view.myMark} above.
+            </p>
+          )}
+          {onExit && (
+            <button
+              onClick={onExit}
+              className="mt-4 text-xs font-semibold text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors touch-manipulation"
+            >
+              Back to lobby
+            </button>
+          )}
+        </div>
       )}
 
-      {/* Waiting indicator — PvP: opponent hasn't answered (answer shown).
-          Solo: the bot is mid-thought, so its deliberation stays visible. */}
+      {/* Status chips — PvP: my latest miss reveals the right answer; solo:
+          the bot is mid-thought, so its deliberation stays visible. */}
       <div className="mb-2 flex flex-wrap items-center justify-center gap-2 min-h-7">
-        {view.waitingOpp && (
-          <>
-            <span className="inline-flex items-center gap-2 animate-popIn text-xs sm:text-sm font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-full px-3 py-1">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75 animate-ping" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
-              </span>
-              Waiting for opponent
-              <span className="inline-flex items-end gap-0.5" aria-hidden>
-                {[0, 1, 2].map((i) => (
-                  <span
-                    key={i}
-                    className="h-1 w-1 rounded-full bg-blue-400 animate-bounce"
-                    style={{ animationDelay: `${i * 150}ms` }}
-                  />
-                ))}
-              </span>
-            </span>
-            {view.word && (
-              <span
-                className={cx(
-                  "inline-flex items-center gap-1.5 animate-popIn text-xs sm:text-sm font-semibold",
-                  "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40",
-                  "rounded-full px-3 py-1 border border-emerald-200 dark:border-emerald-800",
-                )}
-              >
-                Answer:
-                <span className="font-bold text-sm sm:text-base leading-relaxed">
-                  {view.word.correctAnswer}
-                </span>
-              </span>
+        {view.feedback && !ended && (
+          <span
+            className={cx(
+              "inline-flex items-center gap-1.5 animate-popIn text-xs sm:text-sm font-semibold",
+              "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40",
+              "rounded-full px-3 py-1 border border-amber-200 dark:border-amber-800",
             )}
-          </>
+          >
+            Missed — answer:
+            <span className="font-bold text-sm sm:text-base leading-relaxed">
+              {view.feedback.answer}
+            </span>
+          </span>
         )}
-        {!view.waitingOpp && view.oppThinking && !ended && (
+        {view.oppThinking && !ended && (
           <span className="inline-flex items-center gap-2 animate-popIn text-xs sm:text-sm font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-full px-3 py-1">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75 animate-ping" />

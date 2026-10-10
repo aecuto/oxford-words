@@ -41,18 +41,14 @@ function RoomPage() {
     useRoomBattleStore.getState().maybeAutoStart();
   }, [room]);
 
+  // Referee re-check, 10x/sec. The interval only reads the store, so it
+  // never re-renders the screen. It must be polled, not just
+  // snapshot-driven: a failed end/judge write needs a retry even when no
+  // further snapshot arrives.
   useEffect(() => {
-    useRoomBattleStore.getState().settleTurn();
-  }, [room]);
-
-  // Turn deadline without per-tick renders: the interval only reads the
-  // store and submits the timeout once at expiry, so the timer never
-  // re-renders the whole battle screen (TimerBar animates itself).
-  useEffect(() => {
-    const id = window.setInterval(
-      () => useRoomBattleStore.getState().deadlineTick(),
-      100
-    );
+    const id = window.setInterval(() => {
+      useRoomBattleStore.getState().referee();
+    }, 100);
     return () => window.clearInterval(id);
   }, []);
 
@@ -167,6 +163,7 @@ function RoomPage() {
         onViewResult={() =>
           router.push(`/result?outcome=${view.outcome}&mode=room`)
         }
+        onExit={() => router.push("/")}
       />
     </div>
   );

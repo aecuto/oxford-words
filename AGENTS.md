@@ -17,8 +17,9 @@
 - SRS lives in `src/game/wordProgress.ts` (localStorage `solo:wordStats:v1`): wrong answer → `ivl 0` (due immediately), but a 30-min cooldown keeps just-seen words out of reviews; reviews outweigh new words at a fixed 1:2 cycle.
 
 ## The game: Infinite Tic-Tac-Toe
-- A correct answer earns one mark placement on a shared 3x3 board (`src/game/tictactoe.ts` — pure rules both modes import: `applyPlacement`, `checkWinner`, `botPickCell`). Each side holds at most `MARKS_PER_PLAYER` (3) marks — a 4th placement fades their oldest still-on-board mark — so the board never draws; 3 in a row wins. A miss (wrong/timeout) just earns nothing.
-- Placement is the player's tap (PvP writes via the `placeMark` transaction — collisions are no-ops and the player re-taps); the solo bot picks via `botPickCell`. If the words run out before a win, solo tops up from the pool and PvP draws its merged `words[20..]`; only a truly dry deal judges by correct answers (`correctIdx`/`wrongIdx` accumulate on the room doc per answer).
+- Self-paced PvP and PvE: every player walks the shared word list at their own speed — `submitAnswer` records an answer AND deals that player's next word in the same write, so nobody waits for the opponent. No turn timer; faster correct answers simply mean more words.
+- A correct answer earns one mark placement on a shared 3x3 board (`src/game/tictactoe.ts` — pure rules both modes import: `applyPlacement`, `checkWinner`, `botPickCell`). Each side holds at most `MARKS_PER_PLAYER` (3) marks — a 4th placement fades their oldest still-on-board mark — so the board never draws; 3 in a row wins. A miss (wrong pick) just earns nothing.
+- Placement is the player's tap (PvP writes via the `placeMark` transaction — collisions are no-ops and the player re-taps); the solo bot picks via `botPickCell`. The room `referee` (polled by both clients) ends on a board win, or judges by correct answers (`correctIdx`/`wrongIdx` accumulate on the room doc per answer) once BOTH players exhaust the list.
 
 
 ## Architecture

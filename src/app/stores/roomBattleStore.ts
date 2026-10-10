@@ -2,7 +2,6 @@
 
 import { create } from "zustand";
 import {
-  advanceWord,
   endGame,
   getRoom,
   joinRoom,
@@ -29,8 +28,6 @@ import type {
 } from "../../game/types";
 import {
   DEFAULT_PLAYER_NAMES,
-  PLACEMENT_GRACE_MS,
-  TURN_MS,
   WORDS_PER_BATTLE,
 } from "../../lib/gameConfig";
 import { describeAuthError, ensureAnonAuth } from "../../lib/firebase";
@@ -55,7 +52,8 @@ export type BattleView = {
   oppMark: Cell;
   board: Cell[];
   moves: ClientRoom["moves"];
-  // I've earned a placement on the current word and haven't tapped a cell.
+  // I've earned a placement (latest answer correct) and haven't tapped a
+  // cell for it — the board is mine to place on, across word boundaries.
   pendingPlacement: boolean;
   // Cells that fade on the next placement of that side (the "about to
   // vanish" highlight), null while a side holds fewer marks.
@@ -69,20 +67,23 @@ export type BattleView = {
   wordMarks?: (boolean | null)[];
   selected: string | null;
   answerState: AnswerState;
-  waitingOpp: boolean;
+  /** PvP only: my latest answer missed — reveal the right answer inline. */
+  feedback?: { answer: string } | null;
   /** Solo only: the bot is mid-thought on the current word. */
   oppThinking?: boolean;
-  turnStartedAt: number | null;
   outcome: BattleOutcome;
 };
 
-// PvP battle state. Unlike solo, the room doc on Firestore is the source of
-// truth — this store mirrors the latest snapshot and owns every projection
-// (view, phase, isHost) plus the snapshot guards and the summary/SRS
-// buffers. The imperative resources (subscription handle, in-flight op
-// dedupe, settle timer) are module state. Everything per-battle is reset by
-// connect() when a room page mounts, matching the per-mount lifetime the
-// old refs had. Lives in src/app/ — src/game/ stays framework-free.
+// PvP battle state. The room doc on Firestore is the source of truth, and
+// the game is SELF-PACED: each player's slot carries its own wordIndex and
+// clock, every answer deals that player their next word in the same write,
+// and nobody ever waits for the opponent between words. Faster correct
+// answers simply mean more words — and more board placements. This store
+// mirrors the latest snapshot and owns every projection (view, phase,
+// isHost) plus the summary/SRS buffers; imperative resources (subscription
+// handle, in-flight op dedupe) are module state. Everything per-battle is
+// reset by connect() when a room page mounts. Lives in src/app/ —
+// src/game/ stays framework-free.
 type RoomWordDetail = {
   wordIndex: number;
   word: string;
@@ -104,9 +105,9 @@ type RoomBattleState = {
   error: string | null;
   needsJoin: boolean;
   joining: boolean;
-  // Submit-once guard for the current word (clicks, deadline, retries).
+  // Submit-once guard for my current word (clicks, deadline, retries).
   submittedWord: number;
-  // Placement-once guard for the current word (double taps before the
+  // Placement-once guard for my pending placement (double taps before the
   // placement transaction's snapshot lands); reset when the placement
   // didn't land so an occupied cell can be re-tapped.
   placedWord: number;
@@ -144,8 +145,8 @@ const freshRoomBattle = (code: string | null): RoomBattleState => ({
 // Imperative resources — never rendered, never mirrored in React.
 let unsub: (() => void) | null = null;
 const acting = new Set<string>();
-let settleTimer: number | null = null;
-let settleWord: number | null = null;
+
+type ClientSlot = NonNullable<ClientRoom["players"][SlotKey]>;
 
 function slotOf(r: ClientRoom, uid: string): SlotKey | null {
   return r.players.p1?.uid === uid
@@ -188,22 +189,10 @@ function buildRoomView(
       wordTotal: room.words.length,
       selected: null,
       answerState: "idle",
-      waitingOpp: false,
-      turnStartedAt: null,
+      feedback: null,
       outcome: null,
     };
   }
-
-  const current = room.words[room.wordIndex] ?? null;
-  const answeredCurrent = my.lastAnswer?.wordIndex === room.wordIndex;
-  const answerState: BattleView["answerState"] = !answeredCurrent
-    ? "idle"
-    : my.lastAnswer!.correct
-      ? "correct"
-      : my.lastAnswer!.answer === ""
-        ? "timeout"
-        : "wrong";
-  const oppAnswered = opp?.lastAnswer?.wordIndex === room.wordIndex;
 
   const outcome: BattleOutcome =
     room.status === "ended"
@@ -214,14 +203,29 @@ function buildRoomView(
           : "lose"
       : null;
 
-  // A correct answer keeps the board open for me until my move for this
-  // word shows up on the doc — placements and answers resolve on their own
-  // clocks (the placement transaction can lag the answer write).
+  // My current word is whatever my own pointer says — the opponent's
+  // progress never gates it. (?? 0 reads rooms created before the
+  // self-paced schema; they can only be in ended/closed states anyway.)
+  const myIdx = my.wordIndex ?? 0;
+  const myWord = room.words[myIdx] ?? null;
+
+  // A correct latest answer keeps the board open for me until my placement
+  // for exactly that word shows up on the doc.
   const pendingPlacement =
     room.status === "playing" &&
-    answeredCurrent &&
-    my.lastAnswer!.correct &&
-    !moves.some((m) => m.slot === slotKey && m.wordIndex === room.wordIndex);
+    my.lastAnswer?.correct === true &&
+    !moves.some((m) => m.slot === slotKey && m.wordIndex === my.lastAnswer!.wordIndex);
+
+  // My latest answer missed: keep the right answer on screen until my next
+  // word resolves (a correct answer replaces it with the placement prompt).
+  const missed =
+    room.status === "playing" &&
+    my.lastAnswer != null &&
+    my.lastAnswer.wordIndex === myIdx - 1 &&
+    !my.lastAnswer.correct;
+  const feedback = missed
+    ? { answer: room.words[my.lastAnswer!.wordIndex]?.correctAnswer ?? "" }
+    : null;
 
   return {
     myName: my.name,
@@ -233,21 +237,17 @@ function buildRoomView(
     pendingPlacement: pendingPlacement && outcome === null,
     myNextFade: nextToFade(board, moves, slotKey),
     oppNextFade: nextToFade(board, moves, oppKey),
-    word: current,
-    wordNumber: room.wordIndex + 1,
+    word: myWord,
+    wordNumber: Math.min(myIdx + 1, room.words.length),
     wordTotal: room.words.length,
     wordResults: room.words.map((_, i) => {
       if (my.correctIdx?.includes(i)) return true;
       if (my.wrongIdx?.includes(i)) return false;
-      if (i === room.wordIndex) {
-        return answeredCurrent ? my.lastAnswer!.correct : null;
-      }
       return null;
     }),
-    selected: answeredCurrent ? my.lastAnswer!.answer : null,
-    answerState,
-    waitingOpp: answeredCurrent && !oppAnswered && room.status === "playing",
-    turnStartedAt: room.status === "playing" ? room.turnStartedAt ?? null : null,
+    selected: null,
+    answerState: "idle",
+    feedback,
     outcome,
   };
 }
@@ -258,16 +258,15 @@ const stopWatching = () => {
 };
 
 // Only the page-facing surface: connect/disconnect lifecycle, the join
-// flow, host settle paths and the answer/placement entry points. Everything
-// else (snapshot guards, op dedupe, submit guards, summary buffers) stays
+// flow, the referee and the answer/placement entry points. Everything else
+// (snapshot guards, op dedupe, submit guards, summary buffers) stays
 // store-internal and never reaches React.
 type RoomBattleActions = {
   connect: (code: string) => Promise<void>;
   disconnect: () => void;
   join: (joinName: string) => Promise<void>;
   maybeAutoStart: () => void;
-  settleTurn: () => void;
-  deadlineTick: () => void;
+  referee: () => void;
   submitPlayer: (answer: string | null) => Promise<void>;
   placeMyMark: (cell: number) => Promise<void>;
   recordOutcome: () => void;
@@ -305,7 +304,7 @@ export const useRoomBattleStore = create<
     set({ ...partial, view, isHost, phase });
   };
 
-  /** Dedupes concurrent network ops by key (host settle, timeout, ...). */
+  /** Dedupes concurrent network ops by key (referee, timeout, ...). */
   const act = (key: string, fn: () => Promise<unknown>) => {
     if (acting.has(key)) return;
     acting.add(key);
@@ -365,32 +364,28 @@ export const useRoomBattleStore = create<
     if (!r || r.status !== "playing" || !myUid) return;
     const key = slotOf(r, myUid);
     if (!key) return;
-    const my = r.players[key];
-    if (!my || my.lastAnswer?.wordIndex === r.wordIndex) return;
-    if (!claimSubmit(r.wordIndex)) return;
+    const my: ClientSlot | null = r.players[key];
+    if (!my) return;
+    // Already answered my current word — the write itself deals the next.
+    const myIdx = my.wordIndex ?? 0;
+    if (my.lastAnswer?.wordIndex === myIdx) return;
+    if (!claimSubmit(myIdx)) return;
 
-    const current = r.words[r.wordIndex];
+    const current = r.words[myIdx];
     if (!current) return;
 
-    const elapsed = Math.min(
-      Math.max(
-        r.turnStartedAt == null ? TURN_MS : Date.now() - r.turnStartedAt,
-        0
-      ),
-      TURN_MS
-    );
-    const timeout = answer == null;
-    const correct = !timeout && answer === current.correctAnswer;
+    // Response time since the word was dealt to me drives the 2-option SRS
+    // grade in wordProgress: instant (<2s) masters the word, everything
+    // else — slow, guess, wrong — is a retry that keeps it in Pool B.
+    const elapsed = my.turnStartedAt == null ? 0 : Date.now() - my.turnStartedAt;
+    const correct = answer === current.correctAnswer;
 
     const lastAnswer: LastAnswer = {
-      wordIndex: r.wordIndex,
+      wordIndex: myIdx,
       answer: answer ?? "",
       correct,
       at: Date.now(),
     };
-    // Response time + timeout flag drive the 2-option SRS grade in
-    // wordProgress: instant (<2s) masters the word, everything else is a
-    // retry that keeps it in Pool B for active review.
     pushAnswered(
       {
         word: current.word,
@@ -399,13 +394,15 @@ export const useRoomBattleStore = create<
         timeout: answer == null,
       },
       {
-        wordIndex: r.wordIndex,
+        wordIndex: myIdx,
         word: current.word,
         type: current.type,
         correct,
       }
     );
 
+    // One atomic write records the answer and deals my next word — that is
+    // what makes the game self-paced: no waiting for the opponent.
     await submitAnswer(r.code, key, lastAnswer, correct).catch((e) => {
       console.error("battle:submit", e);
       // Let the click or the deadline retry this word.
@@ -450,11 +447,6 @@ export const useRoomBattleStore = create<
 
     disconnect: () => {
       stopWatching();
-      if (settleTimer != null) {
-        window.clearTimeout(settleTimer);
-        settleTimer = null;
-        settleWord = null;
-      }
     },
 
     join: async (joinName) => {
@@ -505,115 +497,40 @@ export const useRoomBattleStore = create<
       }
     },
 
-    // Host-only: ends the game on a finished board, otherwise advances once
-    // the word is fully resolved — both answers in, every earned placement
-    // on the board (a player who ran out the clock without placing
-    // forfeits the mark). Re-runs on every snapshot; the scheduled settle
-    // is keyed by word so live snapshots can't reset it forever.
-    settleTurn: () => {
+    // Referee — any seated player runs it (polled 10x/sec, idempotent):
+    // ends the game the moment a board win shows up, and judges by correct
+    // answers once BOTH players have walked the whole list. Self-pacing
+    // means there is no turn to settle and no forfeit bookkeeping: a player
+    // who stops answering just stops dealing themselves words, and their
+    // opponent is never blocked.
+    referee: () => {
       const st = get();
       const r = st.room;
-      if (!r || !st.uid || st.uid !== r.hostUid) return;
-      if (r.status !== "playing" || r.turnStartedAt == null) return;
+      if (!r || !st.uid) return;
+      if (!slotOf(r, st.uid)) return;
+      if (r.status !== "playing") return;
 
-      const current = r.wordIndex;
       const board = r.board ?? createBoard();
-      const moves = r.moves ?? [];
-
-      // A finished board outranks everything: end immediately.
       const winnerMark = checkWinner(board);
       if (winnerMark) {
-        if (settleTimer != null) {
-          window.clearTimeout(settleTimer);
-          settleTimer = null;
-          settleWord = null;
-        }
         const winner: Winner = winnerMark === "X" ? "p1" : "p2";
-        act(`end-${current}`, () => endGame(r.code, winner));
-        return;
-      }
-
-      const answered = (k: SlotKey) =>
-        r.players[k]?.lastAnswer?.wordIndex === current;
-      const bothAnswered =
-        answered("p1") && r.players.p2 != null && answered("p2");
-      if (!bothAnswered) return;
-
-      const placementMissing = (k: SlotKey) => {
-        const p = r.players[k];
-        if (!p?.lastAnswer || p.lastAnswer.wordIndex !== current) return false;
-        if (!p.lastAnswer.correct) return false;
-        return !moves.some((m) => m.slot === k && m.wordIndex === current);
-      };
-      const forfeit =
-        Date.now() > r.turnStartedAt + TURN_MS + PLACEMENT_GRACE_MS;
-      if ((placementMissing("p1") || placementMissing("p2")) && !forfeit) {
-        return;
-      }
-
-      const lastWord = current + 1 >= r.words.length;
-      if (settleTimer != null && settleWord === current) return;
-      if (settleTimer != null) {
-        window.clearTimeout(settleTimer);
-        settleTimer = null;
-      }
-      settleWord = current;
-      settleTimer = window.setTimeout(() => {
-        settleTimer = null;
-        settleWord = null;
-        if (lastWord) {
-          // The words ran dry before a 3-in-a-row: most correct answers
-          // wins, tracked doc-side as each answer lands.
-          const c1 = r.players.p1?.correctIdx?.length ?? 0;
-          const c2 = r.players.p2?.correctIdx?.length ?? 0;
-          const winner: Winner = c1 === c2 ? "draw" : c1 > c2 ? "p1" : "p2";
-          act(`end-${current}`, () => endGame(r.code, winner));
-        } else {
-          act(`adv-${current}`, () => advanceWord(r.code, current + 1));
-        }
-      }, 900);
-    },
-
-    deadlineTick: () => {
-      const st = get();
-      const cur = st.room;
-      if (!cur || cur.status !== "playing" || cur.turnStartedAt == null) return;
-      if (Date.now() < cur.turnStartedAt + TURN_MS) return;
-      const key = st.uid ? slotOf(cur, st.uid) : null;
-      if (!key) return;
-      const my = cur.players[key];
-      if (!my || my.lastAnswer?.wordIndex === cur.wordIndex) return;
-      if (!claimSubmit(cur.wordIndex)) return;
-      const timedOutWord = cur.words[cur.wordIndex];
-      if (timedOutWord) {
-        pushAnswered(
-          {
-            word: timedOutWord.word,
-            correct: false,
-            ms: TURN_MS,
-            timeout: true,
-          },
-          {
-            wordIndex: cur.wordIndex,
-            word: timedOutWord.word,
-            type: timedOutWord.type,
-            correct: false,
-          }
+        act(`end-${winnerMark}-${r.moves?.length ?? 0}`, () =>
+          endGame(r.code, winner)
         );
+        return;
       }
-      act(`timeout-${cur.wordIndex}`, () =>
-        submitAnswer(
-          cur.code,
-          key,
-          {
-            wordIndex: cur.wordIndex,
-            answer: "",
-            correct: false,
-            at: Date.now(),
-          },
-          false
-        )
-      );
+
+      const exhausted = (k: SlotKey) =>
+        (r.players[k]?.wordIndex ?? 0) >= r.words.length;
+      if (exhausted("p1") && r.players.p2 != null && exhausted("p2")) {
+        // The words ran dry before a 3-in-a-row: most correct answers wins
+        // (the counts are final here — each player's last answer landed in
+        // the same write that exhausted their pointer).
+        const c1 = r.players.p1?.correctIdx?.length ?? 0;
+        const c2 = r.players.p2?.correctIdx?.length ?? 0;
+        const winner: Winner = c1 === c2 ? "draw" : c1 > c2 ? "p1" : "p2";
+        act(`end-judge-${c1}-${c2}`, () => endGame(r.code, winner));
+      }
     },
 
     submitPlayer,
@@ -625,17 +542,19 @@ export const useRoomBattleStore = create<
       if (!r || r.status !== "playing" || !myUid) return;
       const key = slotOf(r, myUid);
       if (!key) return;
+      const my = r.players[key];
+      if (!my?.lastAnswer?.correct) return;
       if (!st.view?.pendingPlacement) return;
       const board = r.board ?? createBoard();
       if (cell < 0 || cell >= board.length || board[cell] !== "") return;
       // Block double taps before the transaction's snapshot lands; if the
       // placement didn't land (cell taken by a simultaneous opponent
       // placement), re-open so the refreshed board can be re-tapped.
-      if (st.placedWord === r.wordIndex) return;
-      set({ placedWord: r.wordIndex });
+      if (st.placedWord === my.lastAnswer.wordIndex) return;
+      set({ placedWord: my.lastAnswer.wordIndex });
       let landed = false;
       try {
-        landed = await placeMark(r.code, key, cell, r.wordIndex);
+        landed = await placeMark(r.code, key, cell, my.lastAnswer.wordIndex);
       } catch (e) {
         console.error("battle:place", e);
       }
@@ -648,7 +567,7 @@ export const useRoomBattleStore = create<
       if (!room || !st.uid) return;
       const outcome = roomOutcome(room, st.uid);
       if (!outcome) return;
-      // Only record battles seen live, never a replay of a finished room,
+      // Only record games seen live, never a replay of a finished room,
       // and only once per room.
       if (!st.liveSeen) return;
       if (st.recordedRoom === room.code) return;

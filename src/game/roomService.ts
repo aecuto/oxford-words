@@ -3,6 +3,7 @@ import {
   collection,
   doc,
   getDoc,
+  increment,
   limit,
   onSnapshot,
   query,
@@ -51,6 +52,8 @@ function newSlot(uid: string, name: string, words: BattleWord[]): RoomDoc["playe
   return {
     uid,
     name,
+    wordIndex: 0,
+    turnStartedAt: null,
     lastAnswer: null,
     correctIdx: [],
     wrongIdx: [],
@@ -60,10 +63,13 @@ function newSlot(uid: string, name: string, words: BattleWord[]): RoomDoc["playe
 
 function toClientRoom(data: RoomDoc | undefined): ClientRoom | null {
   if (!data) return null;
-  return {
-    ...data,
-    turnStartedAt: tsToMillis(data.turnStartedAt, null),
-  };
+  const players = Object.fromEntries(
+    (Object.keys(data.players) as SlotKey[]).map((k) => {
+      const p = data.players[k];
+      return [k, p ? { ...p, turnStartedAt: tsToMillis(p.turnStartedAt, null) } : null];
+    })
+  ) as ClientRoom["players"];
+  return { ...data, players };
 }
 
 export const OPEN_ROOM_MAX_AGE_MS = 60 * 60 * 1000;
@@ -85,8 +91,6 @@ export async function createRoom(
       hostUid: uid,
       status: "waiting",
       words: sliced,
-      wordIndex: 0,
-      turnStartedAt: null,
       board: createBoard(),
       moves: [],
       // p1.words keeps the host's full pick so startGame can merge both
@@ -183,23 +187,34 @@ export async function startGame(code: string, words: BattleWord[]): Promise<void
   await updateDoc(roomRef(code), {
     words,
     status: "playing",
-    turnStartedAt: serverTimestamp(),
+    board: createBoard(),
+    moves: [],
+    // Self-paced start: each player's pointer begins at word 0 with a fresh
+    // clock — nobody waits for the other between words.
+    "players.p1.wordIndex": 0,
+    "players.p1.turnStartedAt": serverTimestamp(),
+    "players.p2.wordIndex": 0,
+    "players.p2.turnStartedAt": serverTimestamp(),
   });
 }
 
+// Record one answer AND deal the player their next word in the same atomic
+// write — the word pointer is per player, so nobody ever waits for the
+// opponent between words. Only the index array this answer lands in is
+// written; a plain [] assignment would wipe the opposite array's history.
 export async function submitAnswer(
   code: string,
   key: SlotKey,
   lastAnswer: LastAnswer,
   correct: boolean
 ): Promise<void> {
-  // Only the field this answer lands in is written — a plain [] assignment
-  // would wipe the opposite array's accumulated history.
   const update: Record<string, unknown> = {
     [`players.${key}.lastAnswer`]: lastAnswer,
     [`players.${key}.${correct ? "correctIdx" : "wrongIdx"}`]: arrayUnion(
       lastAnswer.wordIndex
     ),
+    [`players.${key}.wordIndex`]: increment(1),
+    [`players.${key}.turnStartedAt`]: serverTimestamp(),
   };
   await updateDoc(roomRef(code), update);
 }
@@ -233,13 +248,6 @@ export async function placeMark(
     tx.update(ref, { board: res.board, moves: res.moves });
   });
   return landed;
-}
-
-export async function advanceWord(code: string, nextIndex: number): Promise<void> {
-  await updateDoc(roomRef(code), {
-    wordIndex: nextIndex,
-    turnStartedAt: serverTimestamp(),
-  });
 }
 
 export async function endGame(code: string, winner: Winner): Promise<void> {
@@ -301,15 +309,17 @@ export async function rematchRoom(
     tx.update(ref, {
       status: "playing",
       winner: null,
-      wordIndex: 0,
-      turnStartedAt: serverTimestamp(),
       words: roomWordSet(p1Words, p2Words),
       board: createBoard(),
       moves: [],
       rematchReady: { p1: false, p2: false },
+      "players.p1.wordIndex": 0,
+      "players.p1.turnStartedAt": serverTimestamp(),
       "players.p1.lastAnswer": null,
       "players.p1.correctIdx": [],
       "players.p1.wrongIdx": [],
+      "players.p2.wordIndex": 0,
+      "players.p2.turnStartedAt": serverTimestamp(),
       "players.p2.lastAnswer": null,
       "players.p2.correctIdx": [],
       "players.p2.wrongIdx": [],

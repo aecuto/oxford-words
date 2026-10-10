@@ -1,8 +1,4 @@
-export const TURN_MS = 10_000;
-export const TURN_GRACE_MS = 1_500;
-
-export const WORDS_PER_BATTLE = 20;
-// A room doc carries both players' full picks merged (2 × WORDS_PER_BATTLE),
+export const WORDS_PER_BATTLE = 20;// A room doc carries both players' full picks merged (2 × WORDS_PER_BATTLE),
 // so an Infinite Tic-Tac-Toe game that outlasts the first 20 words keeps
 // drawing from words[20..] with no extra writes.
 export const MAX_WORDS_PER_ROOM = 40;
@@ -35,19 +31,11 @@ export const DEFAULT_PLAYER_NAMES = {
 // board can never clog and the game can never end in a board draw.
 export const MARKS_PER_PLAYER = 3;
 
-// After a word's deadline has passed, a player who answered correctly but
-// never tapped a cell (offline, closed tab) forfeits that placement so the
-// host can advance instead of stalling forever.
-export const PLACEMENT_GRACE_MS = 4_000;
-
 export const COLLECTION = "oxfordwords_rooms";
 export const PROGRESS_COLLECTION = "oxfordwords_progress";
 
 export const ROOM_CODE_LEN = 4;
 export const ROOM_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-
-export const HIGH_MS = 4_000;
-export const MEDIUM_MS = 7_000;
 
 // The 2-option decision rule for the SRS pools (src/game/wordProgress.ts):
 // a correct answer faster than ANSWER_INSTANT_MS masters the word (Pool C);
