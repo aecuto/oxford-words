@@ -43,7 +43,7 @@ function RoomPage() {
 
   // Referee re-check, 10x/sec. The interval only reads the store, so it
   // never re-renders the screen. It must be polled, not just
-  // snapshot-driven: a failed end/judge write needs a retry even when no
+  // snapshot-driven: a failed end/draw write needs a retry even when no
   // further snapshot arrives.
   useEffect(() => {
     const id = window.setInterval(() => {

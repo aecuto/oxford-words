@@ -16,7 +16,7 @@ import {
 } from "../game/wordPool";
 import { loadWordStats } from "../game/wordProgress";
 import { loadWordList, saveWordList } from "../game/wordList";
-import { loadBattleSummary } from "../game/battleSummary";
+import { loadBattleSummary, loadRecentBattleWords } from "../game/battleSummary";
 import {
   closeRoom,
   createRoom,
@@ -176,7 +176,15 @@ export default function BattleHub() {
     try {
       const uid = await ensureAnonAuth();
       const pool = await loadWordPool();
-      const words = pickBattleWords(pool, WORDS_PER_BATTLE, loadWordStats());
+      // Hold out the last battle (same-session summary) and the recent ring,
+      // so a new room never replays the words from my recent games.
+      const excluded = [
+        ...new Set([
+          ...(loadBattleSummary()?.words ?? []).map((w) => w.word),
+          ...loadRecentBattleWords(),
+        ]),
+      ];
+      const words = pickBattleWords(pool, WORDS_PER_BATTLE, loadWordStats(), excluded);
       const code = await createRoom(uid, name.trim() || DEFAULT_PLAYER_NAMES.p1, words);
       startingRef.current = false;
       setMyRoom(null);

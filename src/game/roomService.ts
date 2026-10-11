@@ -18,7 +18,6 @@ import {
 import {
   COLLECTION,
   DEFAULT_PLAYER_NAMES,
-  MAX_WORDS_PER_ROOM,
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LEN,
 } from "../lib/gameConfig";
@@ -80,7 +79,6 @@ export async function createRoom(
   name: string,
   words: BattleWord[]
 ): Promise<string> {
-  const sliced = words.slice(0, MAX_WORDS_PER_ROOM);
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = randomCode();
     const ref = roomRef(code);
@@ -90,12 +88,12 @@ export async function createRoom(
       code,
       hostUid: uid,
       status: "waiting",
-      words: sliced,
+      words,
       board: createBoard(),
       moves: [],
       // p1.words keeps the host's full pick so startGame can merge both
       // halves (the doc-level `words` is only the join-exclusion preview).
-      players: { p1: newSlot(uid, name, sliced), p2: null },
+      players: { p1: newSlot(uid, name, words), p2: null },
       winner: null,
       rematchReady: { p1: false, p2: false },
       createdAt: serverTimestamp() as unknown as RoomDoc["createdAt"],
@@ -198,31 +196,39 @@ export async function startGame(code: string, words: BattleWord[]): Promise<void
   });
 }
 
-// Record one answer AND deal the player their next word in the same atomic
-// write — the word pointer is per player, so nobody ever waits for the
-// opponent between words. Only the index array this answer lands in is
-// written; a plain [] assignment would wipe the opposite array's history.
+// Record one answer and — unless the answer just earned a placement — deal
+// the player their next word in the same atomic write. The word pointer is
+// per player, so nobody ever waits for the opponent between words; a
+// streak-completing answer sets dealNext=false, holding the pointer on the
+// answered word until placeMark releases the gate (place first, then play
+// on). Only the index array this answer lands in is written; a plain []
+// assignment would wipe the opposite array's history.
 export async function submitAnswer(
   code: string,
   key: SlotKey,
   lastAnswer: LastAnswer,
-  correct: boolean
+  correct: boolean,
+  dealNext: boolean
 ): Promise<void> {
   const update: Record<string, unknown> = {
     [`players.${key}.lastAnswer`]: lastAnswer,
     [`players.${key}.${correct ? "correctIdx" : "wrongIdx"}`]: arrayUnion(
       lastAnswer.wordIndex
     ),
-    [`players.${key}.wordIndex`]: increment(1),
-    [`players.${key}.turnStartedAt`]: serverTimestamp(),
   };
+  if (dealNext) {
+    update[`players.${key}.wordIndex`] = increment(1);
+    update[`players.${key}.turnStartedAt`] = serverTimestamp();
+  }
   await updateDoc(roomRef(code), update);
 }
 
 // Place the player's earned mark. A transaction re-reads the doc so two
 // players tapping the same cell can't both land: the loser's write is a
 // no-op and the refreshed snapshot shows the cell occupied for a re-tap.
-// Returns whether the placement landed.
+// When the placement releases a held deal — the pointer still sits on the
+// answered word — the same write advances it with a fresh clock, so the
+// next word deals the instant the mark lands. Returns whether it landed.
 export async function placeMark(
   code: string,
   slot: SlotKey,
@@ -245,7 +251,18 @@ export async function placeMark(
     );
     if (!res) return;
     landed = true;
-    tx.update(ref, { board: res.board, moves: res.moves });
+    const p = room.players[slot];
+    const dealHeld = p?.lastAnswer?.wordIndex === (p?.wordIndex ?? 0);
+    tx.update(ref, {
+      board: res.board,
+      moves: res.moves,
+      ...(dealHeld
+        ? {
+            [`players.${slot}.wordIndex`]: increment(1),
+            [`players.${slot}.turnStartedAt`]: serverTimestamp(),
+          }
+        : {}),
+    });
   });
   return landed;
 }
@@ -268,7 +285,6 @@ export async function rematchRoom(
   uid: string,
   words: BattleWord[]
 ): Promise<void> {
-  const sliced = words.slice(0, MAX_WORDS_PER_ROOM);
   const { fs } = getFirebase();
   const ref = roomRef(code) as DocumentReference<RoomDoc>;
   await runTransaction(fs, async (tx) => {
@@ -292,24 +308,26 @@ export async function rematchRoom(
     const oppPresent = room.players[oppKey] != null;
 
     if (!oppReady || !oppPresent) {
-      // First player in — just mark ready and wait for the other.
+      // First player in — just mark ready and hold my fresh pick in my slot
+      // until the rematch is mutual.
       tx.update(ref, {
         [`rematchReady.${slotKey}`]: true,
-        [`players.${slotKey}.words`]: sliced,
+        [`players.${slotKey}.words`]: words,
       });
       return;
     }
 
-    // Both ready — reset and start immediately.
-    const p1Words =
-      room.players.p1?.words && room.players.p1.words.length > 0
-        ? room.players.p1.words
-        : room.words;
-    const p2Words = room.players.p2?.words ?? [];
+    // Both ready — reset and start immediately. My slot words become THIS
+    // click's fresh pick; the other slot already holds the pick from their
+    // click. Merging straight from the doc slots instead would replay a
+    // stale join-time pick — the source of duplicate words every rematch.
+    const myWords = words.length > 0 ? words : (room.players[slotKey]?.words ?? []);
+    const oppWords = room.players[oppKey]?.words ?? [];
     tx.update(ref, {
       status: "playing",
       winner: null,
-      words: roomWordSet(p1Words, p2Words),
+      [`players.${slotKey}.words`]: myWords,
+      words: roomWordSet(myWords, oppWords),
       board: createBoard(),
       moves: [],
       rematchReady: { p1: false, p2: false },

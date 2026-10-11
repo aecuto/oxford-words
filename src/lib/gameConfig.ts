@@ -1,7 +1,9 @@
-export const WORDS_PER_BATTLE = 20;// A room doc carries both players' full picks merged (2 × WORDS_PER_BATTLE),
-// so an Infinite Tic-Tac-Toe game that outlasts the first 20 words keeps
-// drawing from words[20..] with no extra writes.
-export const MAX_WORDS_PER_ROOM = 40;
+export const WORDS_PER_BATTLE = 20;
+
+// One battle is WORDS_PER_BATTLE words, hard-capped: a PvP room's shared set
+// is both players' picks interleaved down to this count (roomWordSet), and
+// when the words run out with no 3-in-a-row on the board the game is a
+// draw — no top-up from the pool, no judging by correct-answer counts.
 
 // Word list the game plays with ("3000" or "5000"). The player's pick is
 // persisted in localStorage via src/game/wordList.ts; this type anchors the
@@ -25,11 +27,18 @@ export const DEFAULT_PLAYER_NAMES = {
   p2: "Player 2",
 } as const;
 
-// Infinite Tic-Tac-Toe: a correct answer earns one mark placement (X or O)
-// on the shared 3x3 board; 3 in a row wins. Each side may hold at most
+// Infinite Tic-Tac-Toe: PLACEMENT_STREAK consecutive correct answers earn
+// one mark placement (X or O) on the shared 3x3 board; 3 in a row wins. A
+// wrong or timed-out word resets the run. Each side may hold at most
 // MARKS_PER_PLAYER marks — placing one more removes their oldest, so the
 // board can never clog and the game can never end in a board draw.
 export const MARKS_PER_PLAYER = 3;
+
+// Correct answers only pay off in runs: every PLACEMENT_STREAK consecutive
+// correct answers earns exactly one placement (a 6-streak pays two). This
+// gates the board behind real recall instead of a coin-flip on a 2-option
+// grid, and keeps WORDS_PER_BATTLE from filling the board with marks.
+export const PLACEMENT_STREAK = 3;
 
 export const COLLECTION = "oxfordwords_rooms";
 export const PROGRESS_COLLECTION = "oxfordwords_progress";

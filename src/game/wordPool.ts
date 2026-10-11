@@ -3,7 +3,6 @@ import type { BattleWord, Word } from "./types";
 import {
   ANSWER_OPTIONS,
   DAY_MS,
-  MAX_WORDS_PER_ROOM,
   WORDS_PER_BATTLE,
   type WordList,
 } from "../lib/gameConfig";
@@ -46,13 +45,13 @@ export function mergeWordLists(
 }
 
 // The shared word set a PvP room plays with: both players' full picks
-// interleaved, deduped, capped at MAX_WORDS_PER_ROOM. Merging both halves
-// up front means an Infinite Tic-Tac-Toe game that outlasts the first
-// WORDS_PER_BATTLE words keeps drawing from words[20..] with no top-up
-// writes — and batch 2 still honors both players' SRS halves.
+// interleaved (host word, guest word, ...), deduped, capped at
+// WORDS_PER_BATTLE — a battle is exactly 20 shared words. Interleaving both
+// halves means the set reflects both players' SRS pools fairly, and the cap
+// makes word exhaustion the game's end: no board win by word 20 is a draw.
 export function roomWordSet(a: BattleWord[], b: BattleWord[]): BattleWord[] {
   const count =
-    Math.min(a.length + b.length, MAX_WORDS_PER_ROOM) || MAX_WORDS_PER_ROOM;
+    Math.min(a.length + b.length, WORDS_PER_BATTLE) || WORDS_PER_BATTLE;
   return mergeWordLists(a, b, count);
 }
 

@@ -57,7 +57,7 @@ export function TicTacToeBoard({
               fading && "animate-pulse opacity-60",
             )}
           >
-            {cell !== "" && (
+            {cell !== "" ? (
               <span
                 className={cx(
                   "animate-popIn leading-none",
@@ -68,6 +68,21 @@ export function TicTacToeBoard({
               >
                 {cell}
               </span>
+            ) : (
+              placing && (
+                // Ghost preview: my mark at a whisper, so a lit cell reads
+                // as "taps into an X/O here" before the tap commits.
+                <span
+                  className={cx(
+                    "animate-pulse opacity-30 text-3xl sm:text-4xl font-black leading-none",
+                    myMark === "X"
+                      ? "text-blue-500 dark:text-blue-400"
+                      : "text-rose-500 dark:text-rose-400",
+                  )}
+                >
+                  {myMark}
+                </span>
+              )
             )}
           </button>
         );

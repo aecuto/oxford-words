@@ -53,3 +53,42 @@ export function loadBattleSummary(): BattleSummary | null {
     return null;
   }
 }
+
+// Recent battles' full word lists (localStorage): the exclusion horizon for
+// the next deal. One battle is not enough — the SRS old-slot draw takes the
+// least-recently-seen due words first, so with only the previous game held
+// out the same words cycle straight back every other "play again".
+const RECENT_KEY = "battle:recent:v1";
+const RECENT_BATTLES = 3;
+
+export function saveRecentBattleWords(words: string[]): void {
+  try {
+    if (!words.length) return;
+    const next = [words, ...loadRecentBattles()].slice(0, RECENT_BATTLES);
+    window.localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  } catch {
+    // storage unavailable: the one-battle summary exclusion still applies
+  }
+}
+
+function loadRecentBattles(): string[][] {
+  try {
+    const raw = window.localStorage.getItem(RECENT_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((b): b is string[] => Array.isArray(b))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+// Union of the last RECENT_BATTLES battles' words — pass this as the
+// exclude list when picking the next deal.
+export function loadRecentBattleWords(): string[] {
+  const seen = new Set<string>();
+  for (const battle of loadRecentBattles()) {
+    for (const w of battle) seen.add(w);
+  }
+  return [...seen];
+}

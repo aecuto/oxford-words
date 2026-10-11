@@ -10,6 +10,7 @@ import { DailyGoal } from "../components/DailyGoal";
 import { playWordAudio } from "../playWordAudio";
 import {
   loadBattleSummary,
+  loadRecentBattleWords,
   type BattleSummary,
 } from "../../game/battleSummary";
 import { rematchRoom } from "../../game/roomService";
@@ -110,8 +111,14 @@ function ResultPage() {
     try {
       const uid = await ensureAnonAuth();
       const pool = await loadWordPool();
-      // Hold out the battle just played so the rematch deals fresh words.
-      const shown = (summary?.words ?? []).map((w) => w.word);
+      // Hold out the battle just played plus my recent-battles ring, so the
+      // rematch deals fresh words instead of cycling the last few games.
+      const shown = [
+        ...new Set([
+          ...(summary?.words ?? []).map((w) => w.word),
+          ...loadRecentBattleWords(),
+        ]),
+      ];
       const words = pickBattleWords(pool, WORDS_PER_BATTLE, loadWordStats(), shown);
       await rematchRoom(code, uid, words);
       router.push(`/battle/room?id=${code}`);

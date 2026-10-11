@@ -1,14 +1,65 @@
-import { MARKS_PER_PLAYER } from "../lib/gameConfig";
+import { MARKS_PER_PLAYER, PLACEMENT_STREAK } from "../lib/gameConfig";
 import type { Cell, Move, SlotKey } from "./types";
 
 // Infinite Tic-Tac-Toe rules, framework-free so both modes share one
-// implementation: a correct answer earns a placement on the 3x3 board; a
-// side may hold at most MARKS_PER_PLAYER marks — placing one more removes
-// their oldest — and 3 in a row wins. Because the oldest mark always fades,
-// the board never fills up and a game can only end by a win (or by judging
-// correct-answer counts when the words run out, handled by the callers).
+// implementation: PLACEMENT_STREAK consecutive correct answers earn a
+// placement on the 3x3 board; a side may hold at most MARKS_PER_PLAYER
+// marks — placing one more removes their oldest — and 3 in a row wins.
+// Because the oldest mark always fades, the board never fills up and a game
+// can only end by a win (or by judging correct-answer counts when the words
+// run out, handled by the callers).
 
-export const BOARD_CELLS = 9;
+const BOARD_CELLS = 9;
+
+// The consecutive-correct run ending just before `upto` (the player's next
+// unanswered word) in a per-word result list — anything but `true` breaks
+// the run. Both modes build the same per-word result list (PvP from
+// correctIdx/wrongIdx, solo from its answers), so one scan serves both.
+export function answerStreak(
+  results: (boolean | null | undefined)[],
+  upto: number,
+): number {
+  let streak = 0;
+  for (let i = upto - 1; i >= 0; i--) {
+    if (results[i] !== true) break;
+    streak++;
+  }
+  return streak;
+}
+
+// Words whose answer completed a full PLACEMENT_STREAK run — each earns
+// exactly one placement, so a longer run pays one per multiple (a 6-streak
+// is two placements). A wrong or timed-out word resets the run but never
+// erases placements already earned: the returned indexes stay claimable
+// until their mark lands on the board.
+export function placementWords(
+  results: (boolean | null | undefined)[],
+): number[] {
+  const earned: number[] = [];
+  let streak = 0;
+  for (let i = 0; i < results.length; i++) {
+    if (results[i] === true) {
+      streak++;
+      if (streak % PLACEMENT_STREAK === 0) earned.push(i);
+    } else {
+      streak = 0;
+    }
+  }
+  return earned;
+}
+
+// Whether THIS answer (at wordIndex, `results` still excluding it) completes
+// a full PLACEMENT_STREAK run — the moment a placement is earned. PvP holds
+// the next deal on it; solo's settle gate blocks on the same condition via
+// placementWords.
+export function completesStreak(
+  results: (boolean | null | undefined)[],
+  wordIndex: number,
+  correct: boolean,
+): boolean {
+  if (!correct) return false;
+  return (answerStreak(results, wordIndex) + 1) % PLACEMENT_STREAK === 0;
+}
 
 const WIN_LINES = [
   [0, 1, 2],

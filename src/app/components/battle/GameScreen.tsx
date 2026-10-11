@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { cx } from "@emotion/css";
-import { FlagIcon } from "@heroicons/react/24/solid";
+import { CursorArrowRaysIcon, FlagIcon } from "@heroicons/react/24/solid";
 import type { BattleView } from "../../stores/roomBattleStore";
+import { PLACEMENT_STREAK } from "../../../lib/gameConfig";
 import { playSfx, preloadSfx } from "../../../lib/sfx";
 import { preloadWordAudio } from "../../playWordAudio";
 import { AnswerGrid } from "./AnswerGrid";
 import { Logo } from "../Logo";
+import { StreakMeter } from "./StreakMeter";
 import { TicTacToeBoard } from "./TicTacToeBoard";
 import { WordPlayBox } from "./WordPlayBox";
 import { WordProgress } from "./WordProgress";
@@ -105,8 +107,10 @@ export function GameScreen({
             </span>
             <span className="truncate">{view.myName}</span>
           </span>
-          <span className="shrink-0 text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">
+          <span className="shrink-0 text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500 text-center leading-tight">
             3 in a row
+            <br />
+            to place
           </span>
           <span className="flex items-center gap-1.5 min-w-0 text-sm font-bold text-gray-700 dark:text-gray-200 truncate justify-end">
             <span className="truncate">{view.oppName}</span>
@@ -124,11 +128,26 @@ export function GameScreen({
           onPlace={onPlace}
         />
         {view.pendingPlacement && (
-          <p className="animate-popIn mt-2 text-center text-xs sm:text-sm font-bold text-blue-600 dark:text-blue-400">
-            Correct! Tap a cell to place your {view.myMark}
+          <p className="animate-popIn mt-2 flex items-center justify-center gap-1.5 text-center text-xs sm:text-sm font-bold text-blue-600 dark:text-blue-400">
+            <CursorArrowRaysIcon className="w-4 h-4 shrink-0 animate-bounce" />
+            Correct! Tap a cell to place your {view.myMark} — the next word
+            deals after
           </p>
         )}
       </div>
+
+      {/* Streak bar — my run toward the next placement, directly above the
+          word box. The reserved height keeps the layout from jumping when
+          the bar appears on the first correct answer. */}
+      {!ended && !view.pendingPlacement && view.myStreak > 0 && (
+        <div className="mb-2 flex min-h-7 items-center justify-center">
+          <span className="inline-flex items-center gap-2 animate-popIn text-xs sm:text-sm font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-full px-3 py-1">
+            <StreakMeter streak={view.myStreak} />
+            {PLACEMENT_STREAK - (view.myStreak % PLACEMENT_STREAK)} more
+            correct in a row to place your {view.myMark}
+          </span>
+        </div>
+      )}
 
       {/* Word box — tap to play the sound; the word and answers appear inside.
           Once the game ends, it is replaced by the view result box; a PvP
@@ -157,8 +176,8 @@ export function GameScreen({
         <div className="animate-popIn mx-auto max-w-sm rounded-xl border-2 border-gray-300/60 dark:border-gray-700 bg-white dark:bg-gray-900 p-6 text-center">
           <p className="text-lg font-black mb-1">All words answered</p>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Waiting for {view.oppName} to finish — the game is judged when
-            you are both done.
+            Waiting for {view.oppName} to finish — if nobody scores 3 in a
+            row, the game ends in a draw.
           </p>
           {view.pendingPlacement && (
             <p className="mt-2 text-xs font-bold text-blue-600 dark:text-blue-400">

@@ -14,18 +14,21 @@ import {
 } from "../src/game/wordPool";
 import { saveWordResults, type WordResult, type WordStats } from "../src/game/wordProgress";
 import {
+  answerStreak,
   applyPlacement,
   botPickCell,
   checkWinner,
+  completesStreak,
   createBoard,
   markFor,
   nextToFade,
+  placementWords,
 } from "../src/game/tictactoe";
 import {
   ANSWER_OPTIONS,
   DAY_MS,
   MARKS_PER_PLAYER,
-  MAX_WORDS_PER_ROOM,
+  PLACEMENT_STREAK,
   WORDS_PER_BATTLE,
 } from "../src/lib/gameConfig";
 import type { BattleWord, Move, SlotKey, Word } from "../src/game/types";
@@ -163,11 +166,11 @@ async function main() {
   });
 
   // PvP — useBattleRoom: host and guest each run the same picker with their
-  // own stats; the room plays roomWordSet (both full halves merged, capped
-  // at MAX_WORDS_PER_ROOM) so a game can run past the first
-  // WORDS_PER_BATTLE words. Guest join excludes the host's published words;
-  // a rematch excludes the shared battle just played (each player's summary
-  // covers the shared room word list).
+  // own stats; the room plays roomWordSet — both full halves interleaved and
+  // capped at WORDS_PER_BATTLE, the exact shared set both players walk.
+  // Guest join excludes the host's published words; a rematch excludes the
+  // shared battle just played (each player's summary covers the shared room
+  // word list).
   check(`PvP: ${BATTLES} merged host+guest battles, no duplicates, no repeats`, () => {
     let hostStats: WordStats = {};
     let guestStats: WordStats = {};
@@ -185,8 +188,11 @@ async function main() {
       assertValidBattle(guest, poolWords);
       const merged = roomWordSet(host, guest);
       const union = new Set([...host, ...guest].map((w) => w.word)).size;
-      assert.equal(merged.length, Math.min(union, MAX_WORDS_PER_ROOM), "merged room set is short");
-      assert.ok(merged.length >= WORDS_PER_BATTLE, "merged room set below one battle");
+      assert.equal(
+        merged.length,
+        Math.min(union, WORDS_PER_BATTLE),
+        "merged room set is short",
+      );
       assertValidBattle(merged, poolWords);
       if (prev.length) assertNoOverlap(prev, merged, "PvP");
       hostStats = saveWordResults(host.map((w) => ({ word: w.word, correct: i % 2 === 0 })));
@@ -200,6 +206,35 @@ async function main() {
     const solo = pickBattleWords(pool, 1, {})[0];
     const merged = mergeWordLists(pickBattleWords(pool, 1, {}), [], 1);
     assert.deepEqual(Object.keys(solo).sort(), Object.keys(merged[0]).sort());
+  });
+
+  check("roomWordSet: exactly one 20-word shared set, interleaving both halves", () => {
+    const host = pickBattleWords(pool, WORDS_PER_BATTLE, {});
+    const guest = pickBattleWords(
+      pool,
+      WORDS_PER_BATTLE,
+      {},
+      host.map((w) => w.word),
+    );
+    const merged = roomWordSet(host, guest);
+    assert.equal(
+      merged.length,
+      WORDS_PER_BATTLE,
+      "shared set is not capped at the battle size",
+    );
+    assert.equal(
+      new Set(merged.map((w) => w.word)).size,
+      WORDS_PER_BATTLE,
+      "duplicate in the shared set",
+    );
+    // Interleaved draw: with disjoint halves the shared set splits ~10/10 —
+    // never one player's whole pick.
+    const hostWords = new Set(host.map((w) => w.word));
+    const hostShare = merged.filter((w) => hostWords.has(w.word)).length;
+    assert.ok(
+      hostShare >= 10,
+      `interleave collapsed into one half (host share ${hostShare})`,
+    );
   });
 
   // Infinite Tic-Tac-Toe board rules — the win condition both modes share.
@@ -272,6 +307,32 @@ async function main() {
     // Full board: no free cell, null.
     const full = createBoard().map(() => markFor("p1"));
     assert.equal(botPickCell(full, [], "p1"), null);
+  });
+
+  check("tictactoe: a placement needs 3 consecutive correct answers", () => {
+    assert.equal(PLACEMENT_STREAK, 3, "streak gate changed without UI updates");
+    const C = true, X = false, N = null;
+    // Short runs earn nothing.
+    assert.deepEqual(placementWords([]), []);
+    assert.deepEqual(placementWords([C, C]), []);
+    // A full run earns exactly one placement, at its completing word.
+    assert.deepEqual(placementWords([C, C, C]), [2]);
+    // A 6-run pays two; a miss resets the count mid-battle.
+    assert.deepEqual(placementWords([C, C, C, C, C, C]), [2, 5]);
+    assert.deepEqual(placementWords([C, C, X, C, C, C]), [5]);
+    assert.deepEqual(placementWords([C, N, C, C, C]), [4]);
+    assert.deepEqual(placementWords([C, C, N, C, C, C]), [5]);
+    // Trailing-run counter: the latest miss zeroes it, a run after it counts alone.
+    assert.equal(answerStreak([C, C, C, X], 4), 0);
+    assert.equal(answerStreak([C, C, C, X, C], 5), 1);
+    assert.equal(answerStreak([C, C, C], 3), 3);
+    // The hold-deal decision: only a run-completing correct answer gates
+    // the next word behind a placement.
+    assert.equal(completesStreak([C, C], 2, true), true);
+    assert.equal(completesStreak([C, C], 2, false), false);
+    assert.equal(completesStreak([C, X], 2, true), false);
+    assert.equal(completesStreak([C, C, C], 3, true), false);
+    assert.equal(completesStreak([C, C, C, C, C], 5, true), true);
   });
 
   check("due review words re-enter a battle, capped below new words", () => {

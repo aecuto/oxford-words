@@ -11,10 +11,13 @@ import {
   subscribeRoom,
 } from "../../game/roomService";
 import {
+  answerStreak,
   checkWinner,
+  completesStreak,
   createBoard,
   markFor,
   nextToFade,
+  placementWords,
 } from "../../game/tictactoe";
 import type {
   AnswerState,
@@ -39,7 +42,9 @@ import {
 import { loadWordPool, pickBattleWords, roomWordSet } from "../../game/wordPool";
 import { recordResult } from "../../game/progressService";
 import {
+  loadRecentBattleWords,
   saveBattleSummary,
+  saveRecentBattleWords,
   type BattleWordDetail,
 } from "../../game/battleSummary";
 
@@ -52,9 +57,15 @@ export type BattleView = {
   oppMark: Cell;
   board: Cell[];
   moves: ClientRoom["moves"];
-  // I've earned a placement (latest answer correct) and haven't tapped a
-  // cell for it — the board is mine to place on, across word boundaries.
+  // I've earned a placement (PLACEMENT_STREAK consecutive correct answers)
+  // and haven't tapped a cell for it — the board is mine to place on, and
+  // play is gated on it: the next word only deals once the mark lands.
   pendingPlacement: boolean;
+  // The answered word my pending placement was earned on; null when
+  // nothing is pending. placeMyMark records the move against it.
+  placementWord: number | null;
+  // My current consecutive-correct run feeding the next placement.
+  myStreak: number;
   // Cells that fade on the next placement of that side (the "about to
   // vanish" highlight), null while a side holds fewer marks.
   myNextFade: number | null;
@@ -76,7 +87,8 @@ export type BattleView = {
 
 // PvP battle state. The room doc on Firestore is the source of truth, and
 // the game is SELF-PACED: each player's slot carries its own wordIndex and
-// clock, every answer deals that player their next word in the same write,
+// clock, every answer deals that player their next word in the same write
+// (a streak-completing answer holds that deal until its mark is placed),
 // and nobody ever waits for the opponent between words. Faster correct
 // answers simply mean more words — and more board placements. This store
 // mirrors the latest snapshot and owns every projection (view, phase,
@@ -156,10 +168,9 @@ function slotOf(r: ClientRoom, uid: string): SlotKey | null {
       : null;
 }
 
-function roomOutcome(room: ClientRoom, uid: string): BattleOutcome {
-  if (room.status !== "ended") return null;
-  const key = slotOf(room, uid);
-  if (!key) return null;
+// My result for a room in its current state — null while still playing.
+function roomOutcome(room: ClientRoom, key: SlotKey | null): BattleOutcome {
+  if (!key || room.status !== "ended") return null;
   return room.winner === "draw" ? "draw" : room.winner === key ? "win" : "lose";
 }
 
@@ -182,6 +193,8 @@ function buildRoomView(
       board,
       moves,
       pendingPlacement: false,
+      placementWord: null,
+      myStreak: 0,
       myNextFade: null,
       oppNextFade: null,
       word: null,
@@ -194,27 +207,31 @@ function buildRoomView(
     };
   }
 
-  const outcome: BattleOutcome =
-    room.status === "ended"
-      ? room.winner === "draw"
-        ? "draw"
-        : room.winner === slotKey
-          ? "win"
-          : "lose"
-      : null;
-
   // My current word is whatever my own pointer says — the opponent's
   // progress never gates it. (?? 0 reads rooms created before the
   // self-paced schema; they can only be in ended/closed states anyway.)
   const myIdx = my.wordIndex ?? 0;
   const myWord = room.words[myIdx] ?? null;
+  // Per-word results for both sides (null = not yet answered) — the same
+  // list feeds the pips and the streak-based placement rules.
+  const resultsFor = (p: ClientSlot | null): (boolean | null)[] =>
+    room.words.map((_, i) =>
+      p?.correctIdx?.includes(i) ? true : p?.wrongIdx?.includes(i) ? false : null
+    );
+  const wordResults = resultsFor(my);
 
-  // A correct latest answer keeps the board open for me until my placement
-  // for exactly that word shows up on the doc.
-  const pendingPlacement =
-    room.status === "playing" &&
-    my.lastAnswer?.correct === true &&
-    !moves.some((m) => m.slot === slotKey && m.wordIndex === my.lastAnswer!.wordIndex);
+  const outcome: BattleOutcome = roomOutcome(room, slotKey);
+
+  // Every PLACEMENT_STREAK consecutive correct answers earns one placement.
+  // An earned placement stays claimable across word boundaries — only
+  // landing it on the board clears it — so pending is the earliest earned
+  // word with no move of mine recorded for it.
+  const placementWord =
+    room.status === "playing" && outcome === null
+      ? placementWords(wordResults).find(
+          (i) => !moves.some((m) => m.slot === slotKey && m.wordIndex === i),
+        ) ?? null
+      : null;
 
   // My latest answer missed: keep the right answer on screen until my next
   // word resolves (a correct answer replaces it with the placement prompt).
@@ -227,6 +244,20 @@ function buildRoomView(
     ? { answer: room.words[my.lastAnswer!.wordIndex]?.correctAnswer ?? "" }
     : null;
 
+  // The placement gate holds my pointer ON the answered word until my mark
+  // lands: derive the frozen answered state so the grid can't be replayed
+  // and shows the pick that completed the streak. (A pointer on an answered
+  // word never persists otherwise — every non-gated answer advances it in
+  // the same write.)
+  const answeredCurrent =
+    my.lastAnswer != null && my.lastAnswer.wordIndex === myIdx;
+  const answerState: AnswerState = answeredCurrent
+    ? my.lastAnswer!.correct
+      ? "correct"
+      : "wrong"
+    : "idle";
+  const selected = answeredCurrent ? my.lastAnswer!.answer || null : null;
+
   return {
     myName: my.name,
     oppName: opp?.name ?? "Waiting...",
@@ -234,19 +265,17 @@ function buildRoomView(
     oppMark: markFor(oppKey),
     board,
     moves,
-    pendingPlacement: pendingPlacement && outcome === null,
+    pendingPlacement: placementWord !== null,
+    placementWord,
+    myStreak: answerStreak(wordResults, myIdx),
     myNextFade: nextToFade(board, moves, slotKey),
     oppNextFade: nextToFade(board, moves, oppKey),
     word: myWord,
     wordNumber: Math.min(myIdx + 1, room.words.length),
     wordTotal: room.words.length,
-    wordResults: room.words.map((_, i) => {
-      if (my.correctIdx?.includes(i)) return true;
-      if (my.wrongIdx?.includes(i)) return false;
-      return null;
-    }),
-    selected: null,
-    answerState: "idle",
+    wordResults,
+    selected,
+    answerState,
     feedback,
     outcome,
   };
@@ -384,7 +413,6 @@ export const useRoomBattleStore = create<
       wordIndex: myIdx,
       answer: answer ?? "",
       correct,
-      at: Date.now(),
     };
     pushAnswered(
       {
@@ -401,9 +429,16 @@ export const useRoomBattleStore = create<
       }
     );
 
-    // One atomic write records the answer and deals my next word — that is
-    // what makes the game self-paced: no waiting for the opponent.
-    await submitAnswer(r.code, key, lastAnswer, correct).catch((e) => {
+    // One atomic write records the answer and — unless this answer just
+    // completed a placement streak — deals my next word: that is what makes
+    // the game self-paced, no waiting for the opponent. A held deal keeps
+    // the pointer on the answered word; placeMark releases it, so the mark
+    // must land before play continues.
+    const results = r.words.map((_, i) =>
+      my.correctIdx?.includes(i) ? true : my.wrongIdx?.includes(i) ? false : null
+    );
+    const dealNext = !completesStreak(results, myIdx, correct);
+    await submitAnswer(r.code, key, lastAnswer, correct, dealNext).catch((e) => {
       console.error("battle:submit", e);
       // Let the click or the deadline retry this word.
       releaseSubmit();
@@ -460,11 +495,16 @@ export const useRoomBattleStore = create<
         // Words published on the room doc (the host's pick for the pending
         // battle, or the last battle's set on a rematch) must not reappear
         // in my half — I only know my own stats, so exclusion is explicit.
+        // My recent-battles ring joins in, so words from my own last few
+        // games stay out of the deal too.
         const shown = await getRoom(code);
         const excluded = [
-          ...(shown?.words ?? []),
-          ...(shown?.players.p1?.words ?? []),
-        ].map((w) => w.word);
+          ...new Set([
+            ...(shown?.words ?? []).map((w) => w.word),
+            ...(shown?.players.p1?.words ?? []).map((w) => w.word),
+            ...loadRecentBattleWords(),
+          ]),
+        ];
         const myWords = pickBattleWords(
           pool,
           WORDS_PER_BATTLE,
@@ -498,11 +538,12 @@ export const useRoomBattleStore = create<
     },
 
     // Referee — any seated player runs it (polled 10x/sec, idempotent):
-    // ends the game the moment a board win shows up, and judges by correct
-    // answers once BOTH players have walked the whole list. Self-pacing
-    // means there is no turn to settle and no forfeit bookkeeping: a player
-    // who stops answering just stops dealing themselves words, and their
-    // opponent is never blocked.
+    // ends the game the moment a board win shows up, and calls the draw
+    // once BOTH players have walked all WORDS_PER_BATTLE words with no
+    // 3-in-a-row on the board — correct counts don't break the tie. Self-
+    // pacing means there is no turn to settle and no forfeit bookkeeping:
+    // a player who stops answering just stops dealing themselves words
+    // (and can never finish their 20), so the opponent is never blocked.
     referee: () => {
       const st = get();
       const r = st.room;
@@ -523,13 +564,9 @@ export const useRoomBattleStore = create<
       const exhausted = (k: SlotKey) =>
         (r.players[k]?.wordIndex ?? 0) >= r.words.length;
       if (exhausted("p1") && r.players.p2 != null && exhausted("p2")) {
-        // The words ran dry before a 3-in-a-row: most correct answers wins
-        // (the counts are final here — each player's last answer landed in
-        // the same write that exhausted their pointer).
-        const c1 = r.players.p1?.correctIdx?.length ?? 0;
-        const c2 = r.players.p2?.correctIdx?.length ?? 0;
-        const winner: Winner = c1 === c2 ? "draw" : c1 > c2 ? "p1" : "p2";
-        act(`end-judge-${c1}-${c2}`, () => endGame(r.code, winner));
+        // The 20 shared words ran dry before anyone scored 3 in a row:
+        // a draw.
+        act("end-draw", () => endGame(r.code, "draw"));
       }
     },
 
@@ -542,19 +579,20 @@ export const useRoomBattleStore = create<
       if (!r || r.status !== "playing" || !myUid) return;
       const key = slotOf(r, myUid);
       if (!key) return;
-      const my = r.players[key];
-      if (!my?.lastAnswer?.correct) return;
-      if (!st.view?.pendingPlacement) return;
+      // The view already resolved which earned-but-unplaced word my tap
+      // pays for; no earned placement, no board.
+      const pendingWord = st.view?.placementWord ?? null;
+      if (pendingWord === null) return;
       const board = r.board ?? createBoard();
       if (cell < 0 || cell >= board.length || board[cell] !== "") return;
       // Block double taps before the transaction's snapshot lands; if the
       // placement didn't land (cell taken by a simultaneous opponent
       // placement), re-open so the refreshed board can be re-tapped.
-      if (st.placedWord === my.lastAnswer.wordIndex) return;
-      set({ placedWord: my.lastAnswer.wordIndex });
+      if (st.placedWord === pendingWord) return;
+      set({ placedWord: pendingWord });
       let landed = false;
       try {
-        landed = await placeMark(r.code, key, cell, my.lastAnswer.wordIndex);
+        landed = await placeMark(r.code, key, cell, pendingWord);
       } catch (e) {
         console.error("battle:place", e);
       }
@@ -565,15 +603,15 @@ export const useRoomBattleStore = create<
       const st = get();
       const room = st.room;
       if (!room || !st.uid) return;
-      const outcome = roomOutcome(room, st.uid);
+      const slotKey = slotOf(room, st.uid);
+      if (!slotKey) return;
+      const outcome = roomOutcome(room, slotKey);
       if (!outcome) return;
       // Only record games seen live, never a replay of a finished room,
       // and only once per room.
       if (!st.liveSeen) return;
       if (st.recordedRoom === room.code) return;
       set({ recordedRoom: room.code });
-      const slotKey = slotOf(room, st.uid);
-      if (!slotKey) return;
       const oppKey: SlotKey = slotKey === "p1" ? "p2" : "p1";
       const words: BattleWordDetail[] = st.wordDetails.map((d) => ({
         word: d.word,
@@ -592,6 +630,11 @@ export const useRoomBattleStore = create<
         correct: words.filter((w) => w.correct).length,
         words,
       });
+      // The full shared set — not just the words I answered — joins the
+      // recent ring, so the rematch deal holds out every word both players
+      // just saw. Both clients record the same set, so each player's ring
+      // covers the room's history.
+      saveRecentBattleWords(room.words.map((w) => w.word));
       recordResult(outcome).catch((e) =>
         console.error("progress:record", e)
       );

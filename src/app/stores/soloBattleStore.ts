@@ -15,12 +15,14 @@ import {
   type WordStats,
 } from "../../game/wordProgress";
 import {
+  answerStreak,
   applyPlacement,
   botPickCell,
   checkWinner,
   createBoard,
   markFor,
   nextToFade,
+  placementWords,
 } from "../../game/tictactoe";
 import type {
   AnswerState,
@@ -29,10 +31,12 @@ import type {
   Move,
   Word,
 } from "../../game/types";
-import { WORDS_PER_BATTLE } from "../../lib/gameConfig";
+import { PLACEMENT_STREAK, WORDS_PER_BATTLE } from "../../lib/gameConfig";
 import {
   loadBattleSummary,
+  loadRecentBattleWords,
   saveBattleSummary,
+  saveRecentBattleWords,
   type BattleWordDetail,
 } from "../../game/battleSummary";
 import { recordResult } from "../../game/progressService";
@@ -46,12 +50,23 @@ import type { BattleOutcome, BattleView } from "./roomBattleStore";
 // directly: read `view`/`phase`, call actions, and only supply the
 // lifecycle effects. Lives in src/app/ — src/game/ stays framework-free.
 
-// Word flow per turn: player and bot race the same word; a correct answer
-// earns one board placement (the player taps a cell, the bot picks via
-// botPickCell). The word only advances once both have resolved it AND every
-// earned placement is on the board, so the board is always consistent
-// before the next word deals.
+// Word flow per turn: player and bot race the same word; every
+// PLACEMENT_STREAK consecutive correct answers earns one board placement
+// (the player taps a cell, the bot picks via botPickCell — a wrong or
+// timed-out word resets the run). The word only advances once both have
+// resolved it AND every earned placement is on the board, so the board is
+// always consistent before the next word deals.
 const SETTLE_MS = 900;
+
+// The answered word my pending placement was earned on — null when nothing
+// is pending. Derived, never stored: an earned placement stays claimable
+// across word boundaries and only leaves once it lands on the board.
+const pendingPlacementWord = (s: SoloBattleState): number | null =>
+  s.outcome === null
+    ? placementWords(s.wordResults).find(
+        (i) => !s.moves.some((m) => m.slot === "p1" && m.wordIndex === i),
+      ) ?? null
+    : null;
 
 type SoloBattleState = {
   error: string | null;
@@ -63,18 +78,15 @@ type SoloBattleState = {
   wordMarks: (boolean | null)[];
   board: Cell[];
   moves: Move[];
-  // The bot's correct-answer total — the comparator if the word pool ever
-  // runs dry before the board decides a winner.
-  botCorrect: number;
+  // The bot's consecutive-correct run — every PLACEMENT_STREAK of these
+  // earns it one placement, same rule as the player.
+  botStreak: number;
   // The bot's grade for the CURRENT word (null = still resolving) — closes
   // the settle gate alongside the player's answerState.
   botCorrectCurrent: boolean | null;
   // True while the bot has an unanswered word on its desk — drives the
   // "thinking" chip so its deliberation is visible, not just a silent timer.
   botThinking: boolean;
-  // True once I've answered the current word correctly and not yet tapped a
-  // cell — the board is mine to place on.
-  pendingPlacement: boolean;
   startedAt: number | null;
   selected: string | null;
   answerState: AnswerState;
@@ -99,10 +111,9 @@ const freshSoloBattle = (
   wordMarks: new Array<boolean | null>(words.length).fill(null),
   board: createBoard(),
   moves: [],
-  botCorrect: 0,
+  botStreak: 0,
   botCorrectCurrent: null,
   botThinking: false,
-  pendingPlacement: false,
   startedAt,
   selected: null,
   answerState: "idle",
@@ -114,6 +125,7 @@ const freshSoloBattle = (
 });
 
 function buildSoloView(s: SoloBattleState): BattleView {
+  const placementWord = pendingPlacementWord(s);
   return {
     myName: "YOU",
     oppName: SOLO_BOT.name,
@@ -121,8 +133,9 @@ function buildSoloView(s: SoloBattleState): BattleView {
     oppMark: markFor("p2"),
     board: s.board,
     moves: s.moves,
-    pendingPlacement:
-      s.pendingPlacement && s.answerState === "correct" && s.outcome === null,
+    pendingPlacement: placementWord !== null,
+    placementWord,
+    myStreak: answerStreak(s.wordResults, s.wordIndex),
     myNextFade: nextToFade(s.board, s.moves, "p1"),
     oppNextFade: nextToFade(s.board, s.moves, "p2"),
     word: s.words[s.wordIndex] ?? null,
@@ -190,7 +203,7 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
 
     const load = (words: BattleWord[], startedAt: number) => {
       recorded = false;
-      commit({ ...freshSoloBattle(words, startedAt), results: [] });
+      commit(freshSoloBattle(words, startedAt));
     };
 
     const loadError = () => commit({ error: "Could not load the word list." });
@@ -213,12 +226,13 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
       const st = get();
       // Once decided the game is frozen: late lag answers can't touch it.
       if (st.outcome || answer.wordIndex !== st.wordIndex) return;
-      // The bot places its earned mark in the same breath as its answer —
-      // botPickCell keeps it deterministic-free to watch: win, block,
-      // center, corner.
+      // The bot's run earns it a placement only on every PLACEMENT_STREAK
+      // consecutive correct — and it places in the same breath as its
+      // answer: win, block, center, corner.
+      const botStreak = answer.correct ? st.botStreak + 1 : 0;
       let board = st.board;
       let moves = st.moves;
-      if (answer.correct) {
+      if (answer.correct && botStreak % PLACEMENT_STREAK === 0) {
         const cell = botPickCell(board, moves, "p2");
         const res = cell == null ? null : applyPlacement(board, moves, "p2", cell, st.wordIndex);
         if (res) {
@@ -230,7 +244,7 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
       commit({
         botThinking: false,
         botCorrectCurrent: answer.correct,
-        botCorrect: st.botCorrect + (answer.correct ? 1 : 0),
+        botStreak,
         board,
         moves,
         outcome: winner === "O" ? "lose" : null,
@@ -250,44 +264,16 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
         return;
       }
       if (st.wordIndex + 1 >= st.words.length) {
-        // The deal ran dry: "infinite" tops up from the pool (holding out
-        // everything already answered this game) — and only a truly dry
-        // pool falls back to judging by correct answers.
-        const answered = st.words.map((w) => w.word);
-        const picked = pool.length
-          ? pickBattleWords(pool, WORDS_PER_BATTLE, stats, answered)
-          : [];
-        if (picked.length) {
-          commit({
-            words: [...st.words, ...picked],
-            wordResults: [
-              ...st.wordResults,
-              ...new Array<boolean | null>(picked.length).fill(null),
-            ],
-            wordMarks: [
-              ...st.wordMarks,
-              ...new Array<boolean | null>(picked.length).fill(null),
-            ],
-          });
-        } else {
-          const myCorrect = st.wordResults.filter((r) => r === true).length;
-          commit({
-            outcome:
-              myCorrect > st.botCorrect
-                ? "win"
-                : myCorrect < st.botCorrect
-                  ? "lose"
-                  : "draw",
-          });
-          return;
-        }
+        // The 20-word deal ran dry with no 3-in-a-row: a draw — no top-up
+        // from the pool, no judging by correct answers.
+        commit({ outcome: "draw" });
+        return;
       }
       commit({
         wordIndex: st.wordIndex + 1,
         selected: null,
         answerState: "idle",
         botCorrectCurrent: null,
-        pendingPlacement: false,
         startedAt: Date.now(),
       });
       scheduleBotTurn(get().wordIndex);
@@ -301,7 +287,7 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
       if (st.outcome) return;
       if (st.answerState === "idle") return;
       if (st.botCorrectCurrent === null) return;
-      if (st.pendingPlacement) return;
+      if (pendingPlacementWord(st) !== null) return;
       if (settleTimer != null) window.clearTimeout(settleTimer);
       settleTimer = window.setTimeout(() => {
         settleTimer = null;
@@ -335,7 +321,6 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
       commit({
         selected: answer ?? "",
         answerState: correct ? "correct" : timeout ? "timeout" : "wrong",
-        pendingPlacement: correct,
         wordResults,
         wordMarks,
         wordDetails: [
@@ -365,15 +350,17 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
 
     const placeMyMark = (cell: number) => {
       const st = get();
-      if (st.outcome || !st.pendingPlacement) return;
-      const res = applyPlacement(st.board, st.moves, "p1", cell, st.wordIndex);
+      if (st.outcome) return;
+      // Place against the word the pending placement was earned on.
+      const word = pendingPlacementWord(st);
+      if (word === null) return;
+      const res = applyPlacement(st.board, st.moves, "p1", cell, word);
       if (!res) return;
       // A winning placement ends the game immediately — no settle beat.
       const winner = checkWinner(res.board);
       commit({
         board: res.board,
         moves: res.moves,
-        pendingPlacement: false,
         outcome: winner === "X" ? "win" : null,
       });
       maybeSettle();
@@ -393,6 +380,8 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
         correct: details.filter((w) => w.correct).length,
         words: details,
       });
+      // The full dealt list joins the recent ring — next game holds it out.
+      saveRecentBattleWords(st.words.map((w) => w.word));
       recordResult(st.outcome).catch((e) =>
         console.error("progress:record", e)
       );
@@ -411,12 +400,16 @@ export const useSoloBattleStore = create<SoloBattleState & SoloBattleActions>()(
           pool = await loadWordPool();
           stats = loadWordStats();
           // Returning from the result page remounts the page, so the last
-          // game's summary is the only record of what was just played —
-          // hold those words out of the next deal (this replaces the old
-          // reset action: a rematch is just a fresh mount).
-          const prevWords = (loadBattleSummary()?.words ?? []).map(
-            (w) => w.word
-          );
+          // game's summary is the only same-session record of what was just
+          // played — union it with the recent-battles ring so the deal holds
+          // out the last few games, not just the previous one (the SRS old
+          // slots would otherwise pull those words straight back).
+          const prevWords = [
+            ...new Set([
+              ...(loadBattleSummary()?.words ?? []).map((w) => w.word),
+              ...loadRecentBattleWords(),
+            ]),
+          ];
           const picked = pickBattleWords(
             pool,
             WORDS_PER_BATTLE,

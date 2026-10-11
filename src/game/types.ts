@@ -19,7 +19,6 @@ export type LastAnswer = {
   wordIndex: number;
   answer: string;
   correct: boolean;
-  at: number;
 };
 
 export type AnswerState = "idle" | "correct" | "wrong" | "timeout";
@@ -45,8 +44,9 @@ export type PlayerSlot = {
   turnStartedAt: Timestamp | null;
   lastAnswer: LastAnswer | null;
   // Indices of words this player answered correctly / incorrectly — the
-  // per-word history that feeds the pips and the judge-by-count finish.
-  // correctIdx also decides a judge-by-count finish when the words run out.
+  // per-word history that feeds the pips (and the SRS results buffer on
+  // the client). The battle itself is decided by the board, never by
+  // these counts: exhausted words with no 3-in-a-row are a draw.
   correctIdx: number[];
   wrongIdx: number[];
   words: BattleWord[];
